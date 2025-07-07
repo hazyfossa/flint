@@ -1,3 +1,9 @@
+mod x;
+
+struct XOpts {
+    vt: u8,
+}
+
 fn main() {
-    todo!()
+    println!("{:?}", *x::auth::Cookie::build().unwrap());
 }
