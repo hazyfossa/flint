@@ -1,13 +1,14 @@
 [package]
 name = "troglodyt"
-version = "0.1.0"
+version = "0.8.0"
 edition = "2024"
 
 
 [dependencies]
 anyhow = "1.0.98"
-bon = "3.6.4"
-md5 = "0.8.0"
-rustix = { version = "1.0.7", features = ["rand"] }
-shrinkwraprs = "0.3.0"
-xcb = "1.5.0"
+command-fds = "0.3.2"
+libxauth = { version = "0.1.0", path = "../xauth-rs" }
+rustix = { version = "1.0.8", features = ["process", "rand", "system"] }
+freedesktop-file-parser = { git = "https://github.com/BL-CZY/desktop_file_parser.git" }
+x11rb = "0.13.1"
+xdg = "3.0.0"

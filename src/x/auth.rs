@@ -1,35 +1,81 @@
-use std::fs::File;
-use std::io::Write;
+use std::{
+    ffi::OsString,
+    path::{Path, PathBuf},
+};
 
 use anyhow::{Context, Result};
-use rustix::rand::{GetRandomFlags, getrandom};
-use shrinkwraprs::Shrinkwrap;
+use libxauth::{Cookie, XAuthorityFile, utils::LocalAuthorityBuilder};
+use rustix::{
+    rand::{GetRandomFlags, getrandom},
+    system::uname,
+};
 
-#[derive(Shrinkwrap)]
-pub struct Cookie(String);
+use super::Display;
+use crate::{console::VtNumber, environment::EnvValue};
 
-impl Cookie {
-    const RANDOM_BYTES: usize = 128;
+pub struct ClientAuthorityEnv(OsString);
 
-    pub fn build() -> Result<Self> {
-        let mut random = vec![0; Self::RANDOM_BYTES];
-        getrandom(&mut random, GetRandomFlags::empty()).context("getrandom syscall failed")?;
+impl EnvValue for ClientAuthorityEnv {
+    const KEY: &str = "XAUTHORITY";
 
-        let hash = md5::compute(random);
-        Ok(Self(format!("{:x}", hash)))
+    fn serialize(&self) -> OsString {
+        self.0.clone()
     }
 
-    pub fn store(self, file: &mut File) -> Result<()> {
-        file.write_all(self.as_bytes())
-            .context("failed to write cookie to file")
+    fn deserialize(value: OsString) -> Result<Self> {
+        Ok(Self(value))
     }
 }
 
-#[repr(u16)]
-enum Family {
-    Local = 256,
-    Wild = 65535,
-    Netname = 254,
-    Krb5Principal = 253,
-    LocalHost = 252,
+fn make_cookie() -> Result<Cookie> {
+    let mut cookie_buf = [0u8; Cookie::BYTES_LEN];
+    getrandom(&mut cookie_buf, GetRandomFlags::empty()).context("getrandom() failed")?;
+    Ok(Cookie::new(cookie_buf))
+}
+
+fn get_hostname() -> Vec<u8> {
+    uname().nodename().to_bytes().to_vec()
+}
+
+// TODO: allow for easy unlocked mode
+pub struct XAuthorityManager {
+    directory: PathBuf,
+    builder: LocalAuthorityBuilder,
+}
+
+impl XAuthorityManager {
+    pub fn new(directory: &Path) -> Result<Self> {
+        let cookie = make_cookie()?;
+        let hostname = get_hostname();
+
+        Ok(Self {
+            directory: directory.into(),
+            builder: LocalAuthorityBuilder::new(cookie, hostname),
+        })
+    }
+
+    pub fn setup_server(&self, vt: &VtNumber) -> Result<PathBuf> {
+        let authority = self.builder.build_server().finish(); // TODO: here maybe transfer existing
+
+        let path = self.directory.join(format!("vt-{vt}-authority"));
+
+        let mut xauth_file =
+            XAuthorityFile::create(&path).context(format!("Failed to create {path:?}"))?;
+        xauth_file.set(authority)?;
+
+        Ok(path)
+    }
+
+    // TODO: for multi-user support, make this return a ClientAuthBinder
+    pub fn setup_client(self, display: &Display) -> Result<ClientAuthorityEnv> {
+        let authority = self.builder.client(display.number().to_string());
+
+        let path = self.directory.join("x-client-authority");
+
+        let mut xauth_file =
+            XAuthorityFile::create(&path).context(format!("Failed to create {path:?}"))?;
+        xauth_file.set(authority)?;
+
+        Ok(ClientAuthorityEnv(path.into()))
+    }
 }
