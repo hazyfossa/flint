@@ -1,11 +1,5 @@
-use std::{mem, ptr};
-
-use rustix::{
-    ffi, io,
-    ioctl::{self, Ioctl},
-};
-
 use super::VT;
+use crate::utils::ioctl;
 
 #[repr(i32)]
 #[derive(Debug)]
@@ -17,76 +11,38 @@ enum KeyboardMode {
     Unicode = 3,
 }
 
-static IO_GET_KEYBOARD_MODE: u32 = 0x4B44;
-static IO_SET_KEYBOARD_MODE: u32 = 0x4B45;
-
-struct IoGetKeyboardMode;
-
-unsafe impl Ioctl for IoGetKeyboardMode {
-    const IS_MUTATING: bool = true;
-    type Output = KeyboardMode;
-
-    fn opcode(&self) -> ioctl::Opcode {
-        0x4B44
-    }
-
-    fn as_ptr(&mut self) -> *mut ffi::c_void {
-        ptr::null_mut() as _
-    }
-
-    unsafe fn output_from_ptr(
-        out: ioctl::IoctlOutput,
-        _extract_output: *mut ffi::c_void,
-    ) -> io::Result<Self::Output> {
+impl TryFrom<i32> for KeyboardMode {
+    type Error = ();
+    fn try_from(value: i32) -> Result<Self, Self::Error> {
         unsafe {
-            match out {
-                0..=4 => Ok(mem::transmute::<i32, KeyboardMode>(out)),
-                _ => Err(io::Errno::INVAL),
+            match value {
+                0..=4 => Ok(std::mem::transmute::<i32, KeyboardMode>(value)),
+                _ => Err(()),
             }
         }
     }
 }
 
-struct IoSetKeyboardMode(ffi::c_int);
+crate::define_ioctl!(struct IoGetKeyboardMode {
+    opcode: 0x4B44,
+    mutating: true,
+    output: KeyboardMode,
+});
 
-impl IoSetKeyboardMode {
-    fn to(mode: KeyboardMode) -> Self {
-        Self(mode as _)
-    }
-}
-
-unsafe impl Ioctl for IoSetKeyboardMode {
-    const IS_MUTATING: bool = false;
-    type Output = ();
-
-    fn opcode(&self) -> rustix::ioctl::Opcode {
-        0x4B45
-    }
-
-    fn as_ptr(&mut self) -> *mut rustix::ffi::c_void {
-        &mut self.0 as *mut ffi::c_int as _
-    }
-
-    unsafe fn output_from_ptr(
-        out: rustix::ioctl::IoctlOutput,
-        _: *mut rustix::ffi::c_void,
-    ) -> io::Result<Self::Output> {
-        if out != 0 {
-            Err(io::Errno::from_raw_os_error(out))
-        } else {
-            Ok(())
-        }
-    }
-}
+crate::define_ioctl!(struct IoSetKeyboardMode {
+    opcode: 0x4B45,
+    mutating: false,
+    input: KeyboardMode,
+});
 
 impl VT {
-    fn get_keyboard_mode(&self) -> io::Result<KeyboardMode> {
+    fn get_keyboard_mode(&self) -> ioctl::Result<KeyboardMode> {
         // Safety: Descriptor of VT is guaranteed to be a console
-        unsafe { ioctl::ioctl(&self.descriptor, IoGetKeyboardMode) }
+        unsafe { ioctl::run(&self.descriptor, IoGetKeyboardMode::new()) }
     }
 
-    fn set_keyboard_mode(&self, mode: KeyboardMode) -> io::Result<()> {
+    fn set_keyboard_mode(&self, mode: KeyboardMode) -> ioctl::Result<()> {
         // Safety: Descriptor of VT is guaranteed to be a console
-        unsafe { ioctl::ioctl(&self.descriptor, IoSetKeyboardMode::to(mode)) }
+        unsafe { ioctl::run(&self.descriptor, IoSetKeyboardMode::new(mode)) }
     }
 }

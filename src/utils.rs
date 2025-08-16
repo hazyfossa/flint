@@ -203,6 +203,8 @@ pub mod subprocess {
 }
 
 pub mod ioctl {
+    pub use rustix::{io::Result, ioctl::ioctl as run};
+
     /// A helper macro for defining `Ioctl` structs with minimal boilerplate.
     #[macro_export(local_inner_macros)]
     macro_rules! define_ioctl {
@@ -235,9 +237,10 @@ pub mod ioctl {
                 define_ioctl!(@as_ptr self $($input_type)?)
             }
 
+            #[allow(unused_variables)] // TODO: ignore var if output is not set
             unsafe fn output_from_ptr(
                 out: ::rustix::ioctl::IoctlOutput,
-                extract_output: *mut std::os::raw::c_void,
+                extract_output: *mut ::rustix::ffi::c_void,
             ) -> ::rustix::io::Result<Self::Output> {
                 if out != 0 {
                     Err(::rustix::io::Errno::from_raw_os_error(out))
@@ -292,10 +295,10 @@ pub mod ioctl {
 
     // Helper macro for as_ptr implementation
     (@as_ptr $self:ident) => {
-        std::ptr::null_mut()
+        std::ptr::null_mut() as _
     };
     (@as_ptr $self:ident $input_type:ty) => {
-        &mut $self.input as *mut _ as *mut std::os::raw::c_void
+        &mut $self.input as *mut _ as *mut ::rustix::ffi::c_void
     };
 
     // Helper macro for successful output extraction
@@ -303,7 +306,9 @@ pub mod ioctl {
         Ok(())
     };
     (@output_success $extract_output:ident $output_type:ty) => {
-        Ok(unsafe { *($extract_output as *const $output_type) })
-    };
+        ($extract_output as ::rustix::ffi::c_int)
+            .try_into()
+            .map_err(|_| ::rustix::io::Errno::INVAL)
+    }
     }
 }
