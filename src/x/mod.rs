@@ -179,24 +179,24 @@ fn spawn_server(vt: VtNumber, seat: Seat, authority: PathBuf) -> Result<(Display
     Ok((display_rx, process))
 }
 
-pub fn setup(env: &mut EnvContext, auth_directory: &Path) -> Result<JoinHandle<Ret>> {
+pub fn setup(env: &mut EnvContext, runtime_dir: &Path) -> Result<JoinHandle<Ret>> {
     let vt = VtNumber::pull_from(env).context("VT not allocated or XDG_VTNR is unset")?;
     let seat = Seat::pull_from(env).unwrap_or_default();
 
     let window_path = WindowPath::previous_plus_vt(env, &vt);
 
-    let authority_manager =
-        XAuthorityManager::new(auth_directory).context("Failed to setup authority manager")?;
+    // TODO: locking config
+    let authority_manager = XAuthorityManager::new(runtime_dir, &vt, true)
+        .context("Failed to setup authority manager")?;
 
     let server_authority = authority_manager
-        .setup_server(&vt)
+        .setup_server()
         .context("Failed to define server authority")?;
 
     let (future_display, process) = spawn_server(vt, seat, server_authority)?;
     let watcher = XWatcher { process }.start_thread()?;
 
     // NOTE: this will block until the X server is ready
-    dbg!("Starting wait");
     if let Some(display) = future_display.wait()? {
         let client_authority = authority_manager
             .setup_client(&display)

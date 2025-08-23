@@ -7,7 +7,7 @@ edition = "2024"
 [dependencies]
 anyhow = "1.0.98"
 command-fds = "0.3.2"
-libxauth = { version = "0.1.0", path = "../xauth-rs" }
+libxauth = { version = "0.2.0", path = "../xauth-rs" }
 rustix = { version = "1.0.8", features = ["process", "rand", "system"] }
 freedesktop-file-parser = { git = "https://github.com/BL-CZY/desktop_file_parser.git" }
 x11rb = "0.13.1"

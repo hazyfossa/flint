@@ -1,10 +1,13 @@
 use std::{
     ffi::OsString,
+    fs::DirBuilder,
+    io,
+    os::unix::fs::DirBuilderExt,
     path::{Path, PathBuf},
 };
 
 use anyhow::{Context, Result};
-use libxauth::{Cookie, XAuthorityFile, utils::LocalAuthorityBuilder};
+use libxauth::*;
 use rustix::{
     rand::{GetRandomFlags, getrandom},
     system::uname,
@@ -33,49 +36,102 @@ fn make_cookie() -> Result<Cookie> {
     Ok(Cookie::new(cookie_buf))
 }
 
-fn get_hostname() -> Vec<u8> {
+fn get_hostname() -> Hostname {
     uname().nodename().to_bytes().to_vec()
 }
 
+// TODO: is there anything we should do when hostname changes?
+// Session should stay alive as clients fallback to local
+// Are there any side-effects? What breaks?
+
 // TODO: allow for easy unlocked mode
 pub struct XAuthorityManager {
+    lock: bool,
     directory: PathBuf,
-    builder: LocalAuthorityBuilder,
+    cookie: Cookie,
+    hostname: Hostname,
 }
 
 impl XAuthorityManager {
-    pub fn new(directory: &Path) -> Result<Self> {
+    pub fn new(runtime_dir: &Path, vt: &VtNumber, lock: bool) -> Result<Self> {
         let cookie = make_cookie()?;
         let hostname = get_hostname();
 
+        let directory = runtime_dir.join(format!("vt-{vt}"));
+
+        // TODO: what to do with dir on Xorg exit?
+
+        DirBuilder::new()
+            .mode(0o700)
+            .create(&directory)
+            .context(format!("Failed to create {directory:?}"))?;
+
         Ok(Self {
-            directory: directory.into(),
-            builder: LocalAuthorityBuilder::new(cookie, hostname),
+            lock,
+            directory,
+            cookie,
+            hostname,
         })
     }
 
-    pub fn setup_server(&self, vt: &VtNumber) -> Result<PathBuf> {
-        let authority = self.builder.build_server().finish(); // TODO: here maybe transfer existing
+    fn create_auth_file(&self, path: &Path) -> io::Result<AuthorityFile> {
+        if self.lock {
+            AuthorityFile::create(path)
+        } else {
+            // Safety: setting lock=false means user explicitly guarantees no other
+            // party will interact with runtime dir on setup
+            // TODO: maybe propagate safety of lock option better
+            unsafe { AuthorityFile::create_unlocked(path) }
+        }
+    }
 
-        let path = self.directory.join(format!("vt-{vt}-authority"));
+    pub fn setup_server(&self) -> Result<PathBuf> {
+        let authority = Authority::new(Some(vec![Entry::new(
+            &self.cookie,
+            Scope::Any,
+            Target::Server { slot: 0 },
+        )]));
+
+        let path = self.directory.join("server-authority");
 
         let mut xauth_file =
-            XAuthorityFile::create(&path).context(format!("Failed to create {path:?}"))?;
+            AuthorityFile::create(&path).context(format!("Failed to create {path:?}"))?;
         xauth_file.set(authority)?;
 
         Ok(path)
     }
 
-    // TODO: for multi-user support, make this return a ClientAuthBinder
-    pub fn setup_client(self, display: &Display) -> Result<ClientAuthorityEnv> {
-        let authority = self.builder.client(display.number().to_string());
+    pub fn setup_client(&self, display: &Display) -> Result<ClientAuthorityEnv> {
+        let display_number = display.number().to_string();
 
-        let path = self.directory.join("x-client-authority");
+        // TODO: add proper note why we do two entries
+        // (legacy apps + hostname changes)
+
+        let authority = Authority::new(Some(vec![
+            Entry::new(
+                &self.cookie,
+                Scope::Any,
+                Target::Client {
+                    display_number: display_number.clone(),
+                },
+            ),
+            Entry::new(
+                &self.cookie,
+                Scope::Local(self.hostname.clone()),
+                Target::Client { display_number },
+            ),
+        ]));
+
+        let path = self.directory.join("client-authority");
 
         let mut xauth_file =
-            XAuthorityFile::create(&path).context(format!("Failed to create {path:?}"))?;
+            AuthorityFile::create(&path).context(format!("Failed to create {path:?}"))?;
         xauth_file.set(authority)?;
 
         Ok(ClientAuthorityEnv(path.into()))
+    }
+
+    fn seal(self) {
+        todo!()
     }
 }
