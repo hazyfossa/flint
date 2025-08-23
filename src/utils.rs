@@ -100,6 +100,7 @@ pub mod timer {
 pub mod runtime_dir {
     use std::{
         fs,
+        io::ErrorKind,
         ops::Deref,
         os::unix::fs::DirBuilderExt,
         path::{Path, PathBuf},
@@ -107,7 +108,10 @@ pub mod runtime_dir {
 
     use anyhow::{Context, Result};
 
-    pub struct RuntimeDir(PathBuf);
+    pub struct RuntimeDir {
+        path: PathBuf,
+        owned: bool,
+    }
 
     impl RuntimeDir {
         pub fn new(xdg_context: &xdg::BaseDirectories, app_name: &str) -> Result<Self> {
@@ -116,12 +120,19 @@ pub mod runtime_dir {
                 .context("Failed to query base runtime directory")?
                 .join(app_name);
 
-            fs::DirBuilder::new()
-                .mode(0o700)
-                .create(&directory)
-                .context(format!("Cannot create directory {directory:?}"))?;
-
-            Ok(Self(directory))
+            match fs::DirBuilder::new().mode(0o700).create(&directory) {
+                Ok(_) => Ok(Self {
+                    path: directory,
+                    owned: true,
+                }),
+                Err(e) => match e.kind() {
+                    ErrorKind::AlreadyExists => Ok(Self {
+                        path: directory,
+                        owned: false,
+                    }),
+                    _ => Err(e.into()),
+                },
+            }
         }
     }
 
@@ -129,13 +140,15 @@ pub mod runtime_dir {
         type Target = Path;
 
         fn deref(&self) -> &Self::Target {
-            &self.0
+            &self.path
         }
     }
 
     impl Drop for RuntimeDir {
         fn drop(&mut self) {
-            let _ = fs::remove_dir_all(&self.0);
+            if self.owned {
+                let _ = fs::remove_dir_all(&self.path);
+            }
         }
     }
 }
@@ -199,116 +212,5 @@ pub mod subprocess {
             }
             self
         }
-    }
-}
-
-pub mod ioctl {
-    pub use rustix::{io::Result, ioctl::ioctl as run};
-
-    /// A helper macro for defining `Ioctl` structs with minimal boilerplate.
-    #[macro_export(local_inner_macros)]
-    macro_rules! define_ioctl {
-    (
-        $(#[$attr:meta])*
-        $vis:vis struct $name:ident {
-            opcode: $opcode:expr,
-            mutating: $is_mutating:expr,
-            $(input: $input_type:ty,)?
-            $(output: $output_type:ty,)?
-        }
-    ) => {
-        define_ioctl!(@struct
-            $(#[$attr])*
-            $vis $name { $($input_type)? }
-        );
-
-        define_ioctl!(@impl_new $name { $($input_type)? });
-
-        unsafe impl ::rustix::ioctl::Ioctl for $name {
-            type Output = define_ioctl!(@output_type $($output_type)?);
-
-            const IS_MUTATING: bool = $is_mutating;
-
-            fn opcode(&self) -> ::rustix::ioctl::Opcode {
-                $opcode
-            }
-
-            fn as_ptr(&mut self) -> *mut ::rustix::ffi::c_void {
-                define_ioctl!(@as_ptr self $($input_type)?)
-            }
-
-            #[allow(unused_variables)] // TODO: ignore var if output is not set
-            unsafe fn output_from_ptr(
-                out: ::rustix::ioctl::IoctlOutput,
-                extract_output: *mut ::rustix::ffi::c_void,
-            ) -> ::rustix::io::Result<Self::Output> {
-                if out != 0 {
-                    Err(::rustix::io::Errno::from_raw_os_error(out))
-                } else {
-                    define_ioctl!(@output_success extract_output $($output_type)?)
-                }
-            }
-        }
-    };
-
-    // Helper macro for struct definition
-    (@struct
-        $(#[$attr:meta])*
-        $vis:vis $name:ident { }
-    ) => {
-        $(#[$attr])*
-        $vis struct $name {}
-    };
-
-    (@struct
-        $(#[$attr:meta])*
-        $vis:vis $name:ident { $input_type:ty }
-    ) => {
-        $(#[$attr])*
-        $vis struct $name {
-            input: $input_type,
-        }
-    };
-
-    // Helper macro for new() implementation
-    (@impl_new $name:ident { }) => {
-        impl $name {
-            pub fn new() -> Self {
-                Self {}
-            }
-        }
-    };
-
-    (@impl_new $name:ident { $input_type:ty }) => {
-        impl $name {
-            pub fn new(input: impl Into<$input_type>) -> Self {
-                Self {
-                    input: input.into(),
-                }
-            }
-        }
-    };
-
-    // Helper macro for output type
-    (@output_type) => { () };
-    (@output_type $output_type:ty) => { $output_type };
-
-    // Helper macro for as_ptr implementation
-    (@as_ptr $self:ident) => {
-        std::ptr::null_mut() as _
-    };
-    (@as_ptr $self:ident $input_type:ty) => {
-        &mut $self.input as *mut _ as *mut ::rustix::ffi::c_void
-    };
-
-    // Helper macro for successful output extraction
-    (@output_success $extract_output:ident) => {
-        Ok(())
-    };
-    (@output_success $extract_output:ident $output_type:ty) => {
-        ($extract_output as ::rustix::ffi::c_int)
-            .try_into()
-            .map_err(|_| ::rustix::io::Errno::INVAL)
-    }
     }
 }
