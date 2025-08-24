@@ -3,14 +3,18 @@
 mod console;
 mod environment;
 mod login;
-mod session;
+mod template;
 mod utils;
+mod wayland;
 mod x;
 
-use anyhow::{Context, Result};
-use environment::{EnvContext, EnvValue};
-use session::{DesktopRunner, SessionType};
+use std::path::PathBuf;
+
+use anyhow::Result;
+use environment::EnvValue;
 use utils::runtime_dir::RuntimeDir;
+
+use crate::template::SessionManager;
 
 struct Seat(String);
 
@@ -27,17 +31,13 @@ impl Default for Seat {
 }
 
 fn main() -> Result<()> {
-    let mut env = EnvContext::current();
-
     let xdg_context = xdg::BaseDirectories::new();
     let runtime_dir = RuntimeDir::new(&xdg_context, "troglodyt")?;
 
     let session_name = "i3";
-    let session =
-        x::Session::lookup(session_name).context(format!("Cannot find session {session_name}"))?;
 
-    let x_server = x::setup(&mut env, &runtime_dir).context("Failed to start Xorg")?;
+    let session_manager =
+        x::SessionManager::with_config(PathBuf::from("/usr/lib/Xorg"), runtime_dir);
 
-    let runner = DesktopRunner::new(session, env);
-    runner.start_main()?.ok()
+    session_manager.start(session_name)
 }

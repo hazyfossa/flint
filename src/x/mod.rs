@@ -17,13 +17,15 @@ use std::{
 use crate::{
     Seat,
     console::VtNumber,
-    environment::{EnvContext, EnvValue},
-    session::SessionType,
+    environment::{EnvDiff, EnvValue},
+    template,
     utils::{
         fd::{CommandFdCtxExt, FdContext},
         misc::OsStringExt,
+        runtime_dir::RuntimeDir,
         subprocess::{CommandLifetimeExt, ExitStatusExt, Ret},
     },
+    x::auth::ClientAuthorityEnv,
 };
 
 pub struct Display(u8);
@@ -106,8 +108,8 @@ impl EnvValue for WindowPath {
 }
 
 impl WindowPath {
-    fn previous_plus_vt(env: &mut EnvContext, vt: &VtNumber) -> Self {
-        let previous = Self::pull_from(env).ok();
+    fn previous_plus_vt(vt: &VtNumber) -> Self {
+        let previous = Self::current().ok();
         Self(match previous {
             Some(path) => format!("{}:{vt}", path.0),
             None => vt.to_string(),
@@ -151,10 +153,15 @@ impl XWatcher {
     }
 }
 
-fn spawn_server(vt: VtNumber, seat: Seat, authority: PathBuf) -> Result<(DisplayReceiver, Child)> {
+fn spawn_server(
+    path: &Path,
+    authority: PathBuf,
+    vt: VtNumber,
+    seat: Seat,
+) -> Result<(DisplayReceiver, Child)> {
     let mut fd_ctx = FdContext::new(3..5);
 
-    let mut xorg_path = Command::new("Xorg");
+    let mut xorg_path = Command::new(path);
 
     // TODO: this is flaky. Unsetting env causes strange behaviour.
     // Ensure that Xorg always starts non-elevated or bypass Xorg.wrap entirely
@@ -179,40 +186,73 @@ fn spawn_server(vt: VtNumber, seat: Seat, authority: PathBuf) -> Result<(Display
     Ok((display_rx, process))
 }
 
-pub fn setup(env: &mut EnvContext, runtime_dir: &Path) -> Result<JoinHandle<Ret>> {
-    let vt = VtNumber::pull_from(env).context("VT not allocated or XDG_VTNR is unset")?;
-    let seat = Seat::pull_from(env).unwrap_or_default();
+pub struct Session {
+    display: Display,
+    client_authority: ClientAuthorityEnv,
+    window_path: WindowPath,
+}
 
-    let window_path = WindowPath::previous_plus_vt(env, &vt);
+impl template::Session for Session {
+    const LOOKUP_PATH: &str = "/usr/share/xsessions";
+    const XDG_TYPE: &str = "x11";
 
-    // TODO: locking config
-    let authority_manager = XAuthorityManager::new(runtime_dir, &vt, true)
-        .context("Failed to setup authority manager")?;
-
-    let server_authority = authority_manager
-        .setup_server()
-        .context("Failed to define server authority")?;
-
-    let (future_display, process) = spawn_server(vt, seat, server_authority)?;
-    let watcher = XWatcher { process }.start_thread()?;
-
-    // NOTE: this will block until the X server is ready
-    if let Some(display) = future_display.wait()? {
-        let client_authority = authority_manager
-            .setup_client(&display)
-            .context("failed to define client authority")?;
-
-        env.set(display).set(client_authority).set(window_path);
-
-        Ok(watcher)
-    } else {
-        Err(anyhow!("Internal Xorg error. See logs above for details."))
+    fn env(self) -> EnvDiff {
+        EnvDiff::build()
+            .set(self.display)
+            .set(self.client_authority)
+            .set(self.window_path)
+            .seal()
     }
 }
 
-pub struct Session;
+pub struct SessionManager {
+    // TODO: config
+    xorg_path: PathBuf,
+    runtime_dir: RuntimeDir,
+}
 
-impl SessionType for Session {
-    const LOOKUP_PATH: &str = "/usr/share/xsessions";
-    const XDG_TYPE: &str = "x11";
+impl SessionManager {
+    pub fn with_config(xorg_path: PathBuf, runtime_dir: RuntimeDir) -> Self {
+        Self {
+            xorg_path,
+            runtime_dir,
+        }
+    }
+}
+
+impl template::SessionManager<Session> for SessionManager {
+    fn setup(self) -> Result<Session> {
+        let vt = VtNumber::current().context("VT not allocated or XDG_VTNR is unset")?;
+        let seat = Seat::current().unwrap_or_default();
+
+        let window_path = WindowPath::previous_plus_vt(&vt);
+
+        // TODO: locking config
+        let authority_manager = XAuthorityManager::new(&self.runtime_dir, &vt, true)
+            .context("Failed to setup authority manager")?;
+
+        let server_authority = authority_manager
+            .setup_server()
+            .context("Failed to define server authority")?;
+
+        let (future_display, process) = spawn_server(&self.xorg_path, server_authority, vt, seat)?;
+        let watcher = XWatcher { process }.start_thread()?; // TODO: requires changes to trait
+
+        // NOTE: this will block until the X server is ready
+        if let Some(display) = future_display.wait()? {
+            let client_authority = authority_manager
+                .setup_client(&display)
+                .context("failed to define client authority")?;
+
+            let session = Session {
+                display,
+                client_authority,
+                window_path,
+            };
+
+            Ok(session)
+        } else {
+            Err(anyhow!("Internal Xorg error. See logs above for details."))
+        }
+    }
 }
