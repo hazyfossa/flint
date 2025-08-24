@@ -100,18 +100,13 @@ impl DisplayReceiver {
     }
 }
 
-struct WindowPath(String);
-
-impl EnvValue for WindowPath {
-    const KEY: &str = "WINDOWPATH";
-    crate::env_impl!();
-}
+crate::define_env!("WINDOWPATH", WindowPath(String));
 
 impl WindowPath {
     fn previous_plus_vt(vt: &VtNumber) -> Self {
         let previous = Self::current().ok();
         Self(match previous {
-            Some(path) => format!("{}:{vt}", path.0),
+            Some(path) => format!("{}:{}", path.0, vt.to_string()),
             None => vt.to_string(),
         })
     }
@@ -166,7 +161,7 @@ fn spawn_server(
     // TODO: this is flaky. Unsetting env causes strange behaviour.
     // Ensure that Xorg always starts non-elevated or bypass Xorg.wrap entirely
     let command = xorg_path
-        .arg(format!("vt{vt}"))
+        .arg(format!("vt{}", vt.to_string()))
         .args(["-seat".into(), seat.serialize()])
         .args(["-auth".into(), authority.into_os_string()])
         .args(["-nolisten", "tcp"])

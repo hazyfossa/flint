@@ -11,17 +11,11 @@ mod x;
 use std::path::PathBuf;
 
 use anyhow::Result;
-use environment::EnvValue;
 use utils::runtime_dir::RuntimeDir;
 
 use crate::template::SessionManager;
 
-struct Seat(String);
-
-impl EnvValue for Seat {
-    const KEY: &str = "XDG_SEAT";
-    crate::env_impl!();
-}
+crate::define_env!("XDG_SEAT", Seat(String));
 
 impl Default for Seat {
     fn default() -> Self {

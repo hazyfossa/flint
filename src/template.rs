@@ -8,7 +8,7 @@ use std::{
     path::PathBuf,
 };
 
-use crate::environment::{EnvDiff, EnvValue};
+use crate::environment::EnvDiff;
 
 pub trait Session: Sized {
     const LOOKUP_PATH: &str;
@@ -83,21 +83,11 @@ impl<T: Session> SessionMetadata<T> {
     }
 }
 
-struct SessionNameEnv(String);
+// TODO: is setting this to the SessionMetadata.name appropriate?
+// The spec says this can contain list of values
+crate::define_env!("XDG_CURRENT_DESKTOP", SessionNameEnv(String));
 
-impl EnvValue for SessionNameEnv {
-    // TODO: is setting this to the SessionMetadata.name appropriate?
-    // The spec says this can contain list of values
-    const KEY: &str = "XDG_CURRENT_DESKTOP";
-    crate::env_impl!();
-}
-
-struct SessionTypeEnv(String);
-
-impl EnvValue for SessionTypeEnv {
-    const KEY: &str = "XDG_SESSION_TYPE";
-    crate::env_impl!();
-}
+crate::define_env!("XDG_SESSION_TYPE", SessionTypeEnv(String));
 
 pub trait SessionManager<T: Session>: Sized {
     fn setup(self) -> Result<T>;
