@@ -84,7 +84,7 @@ impl EnvBuilder {
         self
     }
 
-    pub fn seal(self) -> EnvDiff {
+    pub fn build(self) -> EnvDiff {
         self.0
     }
 }

@@ -62,8 +62,11 @@ impl<T: Session> SessionMetadata<T> {
         Self::parse_file(&mut file).context("Session definition is incorrect")
     }
 
-    fn lookup_all() -> Option<Vec<Self>> {
-        let dir = PathBuf::from(T::LOOKUP_PATH).read_dir().ok()?;
+    fn lookup_all() -> Vec<Self> {
+        let dir = match PathBuf::from(T::LOOKUP_PATH).read_dir() {
+            Ok(dir) => dir,
+            Err(_) => return Vec::new(), // TODO: consider propagating error if it is not "path missing"
+        };
 
         fn files(entry: io::Result<DirEntry>) -> Option<File> {
             // TODO: propagate errors
@@ -75,11 +78,9 @@ impl<T: Session> SessionMetadata<T> {
             File::open(entry.path()).ok()
         }
 
-        Some(
-            dir.filter_map(files)
-                .filter_map(|mut file| Self::parse_file(&mut file).ok())
-                .collect(),
-        )
+        dir.filter_map(files)
+            .filter_map(|mut file| Self::parse_file(&mut file).ok())
+            .collect()
     }
 }
 
@@ -99,7 +100,7 @@ pub trait SessionManager<T: Session>: Sized {
         let env = EnvDiff::build()
             .set(SessionNameEnv(metadata.name))
             .set(SessionTypeEnv(T::XDG_TYPE.to_string()))
-            .seal()
+            .build()
             + session_instance.env();
 
         // TODO: spawn main executable
