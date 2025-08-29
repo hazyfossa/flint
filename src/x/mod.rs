@@ -1,7 +1,6 @@
 mod auth;
 
 mod connection;
-mod resources;
 
 use anyhow::{Context, Result, anyhow};
 use auth::XAuthorityManager;
@@ -196,7 +195,7 @@ impl template::Session for Session {
             .set(self.display)
             .set(self.client_authority)
             .set(self.window_path)
-            .seal()
+            .build()
     }
 }
 
@@ -204,13 +203,15 @@ pub struct SessionManager {
     // TODO: config
     xorg_path: PathBuf,
     runtime_dir: RuntimeDir,
+    lock_authority: bool,
 }
 
 impl SessionManager {
-    pub fn with_config(xorg_path: PathBuf, runtime_dir: RuntimeDir) -> Self {
+    pub fn with_config(xorg_path: PathBuf, runtime_dir: RuntimeDir, lock_authority: bool) -> Self {
         Self {
             xorg_path,
             runtime_dir,
+            lock_authority,
         }
     }
 }
@@ -222,8 +223,7 @@ impl template::SessionManager<Session> for SessionManager {
 
         let window_path = WindowPath::previous_plus_vt(&vt);
 
-        // TODO: locking config
-        let authority_manager = XAuthorityManager::new(&self.runtime_dir, &vt, true)
+        let authority_manager = XAuthorityManager::new(&self.runtime_dir, &vt, self.lock_authority)
             .context("Failed to setup authority manager")?;
 
         let server_authority = authority_manager
