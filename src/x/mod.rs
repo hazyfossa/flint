@@ -8,7 +8,7 @@ use auth::XAuthorityManager;
 use std::{
     ffi::OsString,
     io::{BufRead, BufReader, PipeReader, pipe},
-    path::{Path, PathBuf},
+    path::PathBuf,
     process::{Child, Command, Stdio},
     thread::{self, JoinHandle},
 };
@@ -22,7 +22,7 @@ use crate::{
         fd::{CommandFdCtxExt, FdContext},
         misc::OsStringExt,
         runtime_dir::RuntimeDir,
-        subprocess::{CommandLifetimeExt, ExitStatusExt, Ret},
+        subprocess::{ExitStatusExt, Ret},
     },
     x::auth::ClientAuthorityEnv,
 };
@@ -147,39 +147,6 @@ impl XWatcher {
     }
 }
 
-fn spawn_server(
-    path: &Path,
-    authority: PathBuf,
-    vt: VtNumber,
-    seat: Seat,
-) -> Result<(DisplayReceiver, Child)> {
-    let mut fd_ctx = FdContext::new(3..5);
-
-    let mut xorg_path = Command::new(path);
-
-    // TODO: this is flaky. Unsetting env causes strange behaviour.
-    // Ensure that Xorg always starts non-elevated or bypass Xorg.wrap entirely
-    let command = xorg_path
-        .arg(format!("vt{}", vt.to_string()))
-        .args(["-seat".into(), seat.serialize()])
-        .args(["-auth".into(), authority.into_os_string()])
-        .args(["-nolisten", "tcp"])
-        .args(["-background", "none", "-noreset", "-keeptty", "-novtswitch"])
-        .args(["-verbose", "3", "-logfile", "/dev/null"])
-        .envs([("XORG_RUN_AS_USER_OK", "1")]) // TODO: relevant?
-        .bind_lifetime();
-
-    let (display_rx, command) = DisplayReceiver::setup(&mut fd_ctx, command)?;
-
-    let process = command
-        .with_fd_context(fd_ctx)
-        .stderr(Stdio::piped())
-        .spawn()
-        .context("Failed to spawn subprocess")?;
-
-    Ok((display_rx, process))
-}
-
 pub struct Session {
     display: Display,
     client_authority: ClientAuthorityEnv,
@@ -218,6 +185,40 @@ impl XorgManager {
     }
 }
 
+impl XorgManager {
+    fn spawn_server(
+        &self,
+        authority: PathBuf,
+        vt: VtNumber,
+        seat: Seat,
+    ) -> Result<(DisplayReceiver, Child)> {
+        let mut fd_ctx = FdContext::new(3..5);
+
+        let mut xorg_path = Command::new(&self.xorg_path);
+
+        // TODO: this is flaky. Unsetting env causes strange behaviour.
+        // Ensure that Xorg always starts non-elevated or bypass Xorg.wrap entirely
+        let command = xorg_path
+            .arg(format!("vt{}", vt.to_string()))
+            .args(["-seat".into(), seat.serialize()])
+            .args(["-auth".into(), authority.into_os_string()])
+            .args(["-nolisten", "tcp"])
+            .args(["-background", "none", "-noreset", "-keeptty", "-novtswitch"])
+            .args(["-verbose", "3", "-logfile", "/dev/null"])
+            .envs([("XORG_RUN_AS_USER_OK", "1")]); // TODO: relevant?
+
+        let (display_rx, command) = DisplayReceiver::setup(&mut fd_ctx, command)?;
+
+        let process = command
+            .with_fd_context(fd_ctx)
+            .stderr(Stdio::piped())
+            .spawn()
+            .context("Failed to spawn subprocess")?;
+
+        Ok((display_rx, process))
+    }
+}
+
 impl template::SessionManager<Session> for XorgManager {
     fn setup_session(self) -> Result<Session> {
         let vt = VtNumber::current().context("VT not allocated or XDG_VTNR is unset")?;
@@ -225,14 +226,14 @@ impl template::SessionManager<Session> for XorgManager {
 
         let window_path = WindowPath::previous_plus_vt(&vt);
 
-        let authority_manager = XAuthorityManager::new(&self.runtime_dir, &vt, self.lock_authority)
+        let authority_manager = XAuthorityManager::new(&vt, self.lock_authority)
             .context("Failed to setup authority manager")?;
 
         let server_authority = authority_manager
             .setup_server()
             .context("Failed to define server authority")?;
 
-        let (future_display, process) = spawn_server(&self.xorg_path, server_authority, vt, seat)?;
+        let (future_display, process) = self.spawn_server(server_authority, vt, seat)?;
         let watcher = XWatcher { process }.start_thread()?; // TODO: requires changes to trait
 
         // NOTE: this will block until the X server is ready

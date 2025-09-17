@@ -12,7 +12,6 @@ use anyhow::{Result, anyhow};
 use pico_args::Arguments;
 
 use template::{Session, SessionManager, SessionMetadata};
-use utils::runtime_dir::RuntimeDir;
 
 crate::define_env!("XDG_SEAT", Seat(String));
 
@@ -33,9 +32,9 @@ fn run<T: Session>(mut args: Arguments) -> Result<()> {
         let name: String = args.free_from_str().map_err(|_| {
             anyhow!(
                 "
-            No session name provided.
-            Use --list to list available sessions.    
-    "
+                No session name provided.
+                Use --list to list available sessions.    
+                "
             )
         })?;
 
@@ -46,9 +45,6 @@ fn run<T: Session>(mut args: Arguments) -> Result<()> {
 }
 
 fn main() -> Result<()> {
-    let xdg_context = xdg::BaseDirectories::new();
-    let runtime_dir = RuntimeDir::new(&xdg_context, "troglodyt")?;
-
     let mut args = Arguments::from_env();
 
     let subcommand = args.subcommand()?;

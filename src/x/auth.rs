@@ -14,7 +14,7 @@ use rustix::{
 };
 
 use super::Display;
-use crate::{console::VtNumber, environment::EnvValue};
+use crate::{console::VtNumber, environment::EnvValue, utils::runtime_dir};
 
 pub struct ClientAuthorityEnv(OsString);
 
@@ -53,10 +53,11 @@ pub struct XAuthorityManager {
 }
 
 impl XAuthorityManager {
-    pub fn new(runtime_dir: &Path, vt: &VtNumber, lock: bool) -> Result<Self> {
+    pub fn new(vt: &VtNumber, lock: bool) -> Result<Self> {
         let cookie = make_cookie()?;
         let hostname = get_hostname();
 
+        let runtime_dir = runtime_dir::current();
         let directory = runtime_dir.join(format!("vt-{}", vt.to_string()));
 
         // TODO: what to do with dir on Xorg exit?

@@ -103,16 +103,29 @@ pub mod runtime_dir {
         ops::Deref,
         os::unix::fs::DirBuilderExt,
         path::{Path, PathBuf},
+        sync::OnceLock,
     };
 
     use anyhow::{Context, Result};
 
+    // TODO: clean error propagation. Possibly abandon lazy loading at all.
+    static RUNTIME_DIR: OnceLock<RuntimeDir> = OnceLock::new();
+
+    pub fn current() -> &'static RuntimeDir {
+        RUNTIME_DIR.get_or_init(|| {
+            let xdg_context = xdg::BaseDirectories::new();
+            RuntimeDir::create(&xdg_context, "troglodyt")
+                .expect("Error while creating runtime directory")
+        })
+    }
+
+    #[derive(Debug)]
     pub struct RuntimeDir {
         path: PathBuf,
     }
 
     impl RuntimeDir {
-        pub fn new(xdg_context: &xdg::BaseDirectories, app_name: &str) -> Result<Self> {
+        pub fn create(xdg_context: &xdg::BaseDirectories, app_name: &str) -> Result<Self> {
             let path = xdg_context
                 .get_runtime_directory()
                 .context("Failed to query base runtime directory")?
