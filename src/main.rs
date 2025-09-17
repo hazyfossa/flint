@@ -11,9 +11,9 @@ mod x;
 use std::path::PathBuf;
 
 use anyhow::Result;
-use utils::runtime_dir::RuntimeDir;
 
-use crate::template::SessionManager;
+use template::{SessionManager, SessionMetadata};
+use utils::runtime_dir::RuntimeDir;
 
 crate::define_env!("XDG_SEAT", Seat(String));
 
@@ -29,9 +29,13 @@ fn main() -> Result<()> {
     let runtime_dir = RuntimeDir::new(&xdg_context, "troglodyt")?;
 
     let session_name = "i3";
+    let metadata = SessionMetadata::<x::Session>::lookup(session_name)?;
 
-    let session_manager =
-        x::SessionManager::with_config(PathBuf::from("/usr/lib/Xorg"), runtime_dir);
+    let manager = <x::Session as template::Session>::Manager::with_config(
+        PathBuf::from("/usr/lib/Xorg"),
+        runtime_dir,
+        true,
+    );
 
-    session_manager.start(session_name)
+    manager.start(metadata)
 }

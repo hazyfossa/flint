@@ -14,7 +14,11 @@ pub trait Session: Sized {
     const LOOKUP_PATH: &str;
     const XDG_TYPE: &str;
 
-    fn env(self) -> EnvDiff;
+    type Manager: SessionManager<Self>;
+
+    fn env(self) -> EnvDiff; // TODO: This should be a trait
+
+    // type Metadata = SessionMetadata<Self>; // requires unstable
 }
 
 // TODO: implement display
@@ -51,7 +55,7 @@ impl<T: Session> SessionMetadata<T> {
         })
     }
 
-    fn lookup(name: &str) -> Result<Self> {
+    pub fn lookup(name: &str) -> Result<Self> {
         let path = PathBuf::from(T::LOOKUP_PATH).join(format!("{name}.desktop"));
 
         let mut file = File::open(path).map_err(|e| match e.kind() {
@@ -62,7 +66,7 @@ impl<T: Session> SessionMetadata<T> {
         Self::parse_file(&mut file).context("Session definition is incorrect")
     }
 
-    fn lookup_all() -> Vec<Self> {
+    pub fn lookup_all() -> Vec<Self> {
         let dir = match PathBuf::from(T::LOOKUP_PATH).read_dir() {
             Ok(dir) => dir,
             Err(_) => return Vec::new(), // TODO: consider propagating error if it is not "path missing"
@@ -91,11 +95,10 @@ crate::define_env!("XDG_CURRENT_DESKTOP", SessionNameEnv(String));
 crate::define_env!("XDG_SESSION_TYPE", SessionTypeEnv(String));
 
 pub trait SessionManager<T: Session>: Sized {
-    fn setup(self) -> Result<T>;
+    fn setup_session(self) -> Result<T>;
 
-    fn start(self, session_name: &str) -> Result<()> {
-        let metadata = SessionMetadata::<T>::lookup(session_name)?;
-        let session_instance = self.setup()?;
+    fn start(self, metadata: SessionMetadata<T>) -> Result<()> {
+        let session_instance = self.setup_session()?;
 
         let env = EnvDiff::build()
             .set(SessionNameEnv(metadata.name))

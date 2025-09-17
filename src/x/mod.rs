@@ -190,6 +190,8 @@ impl template::Session for Session {
     const LOOKUP_PATH: &str = "/usr/share/xsessions";
     const XDG_TYPE: &str = "x11";
 
+    type Manager = XorgManager;
+
     fn env(self) -> EnvDiff {
         EnvDiff::build()
             .set(self.display)
@@ -199,14 +201,14 @@ impl template::Session for Session {
     }
 }
 
-pub struct SessionManager {
+pub struct XorgManager {
     // TODO: config
     xorg_path: PathBuf,
     runtime_dir: RuntimeDir,
     lock_authority: bool,
 }
 
-impl SessionManager {
+impl XorgManager {
     pub fn with_config(xorg_path: PathBuf, runtime_dir: RuntimeDir, lock_authority: bool) -> Self {
         Self {
             xorg_path,
@@ -216,8 +218,8 @@ impl SessionManager {
     }
 }
 
-impl template::SessionManager<Session> for SessionManager {
-    fn setup(self) -> Result<Session> {
+impl template::SessionManager<Session> for XorgManager {
+    fn setup_session(self) -> Result<Session> {
         let vt = VtNumber::current().context("VT not allocated or XDG_VTNR is unset")?;
         let seat = Seat::current().unwrap_or_default();
 
