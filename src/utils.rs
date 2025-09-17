@@ -100,7 +100,6 @@ pub mod timer {
 pub mod runtime_dir {
     use std::{
         fs,
-        io::ErrorKind,
         ops::Deref,
         os::unix::fs::DirBuilderExt,
         path::{Path, PathBuf},
@@ -110,29 +109,21 @@ pub mod runtime_dir {
 
     pub struct RuntimeDir {
         path: PathBuf,
-        owned: bool,
     }
 
     impl RuntimeDir {
         pub fn new(xdg_context: &xdg::BaseDirectories, app_name: &str) -> Result<Self> {
-            let directory = xdg_context
+            let path = xdg_context
                 .get_runtime_directory()
                 .context("Failed to query base runtime directory")?
                 .join(app_name);
 
-            match fs::DirBuilder::new().mode(0o700).create(&directory) {
-                Ok(_) => Ok(Self {
-                    path: directory,
-                    owned: true,
-                }),
-                Err(e) => match e.kind() {
-                    ErrorKind::AlreadyExists => Ok(Self {
-                        path: directory,
-                        owned: false,
-                    }),
-                    _ => Err(e.into()),
-                },
-            }
+            fs::DirBuilder::new()
+                .mode(0o700)
+                .recursive(true)
+                .create(&path)?;
+
+            Ok(Self { path })
         }
     }
 
@@ -146,9 +137,7 @@ pub mod runtime_dir {
 
     impl Drop for RuntimeDir {
         fn drop(&mut self) {
-            if self.owned {
-                let _ = fs::remove_dir_all(&self.path);
-            }
+            _ = fs::remove_dir(self.path.clone())
         }
     }
 }
