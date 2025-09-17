@@ -1,7 +1,5 @@
 mod auth;
 
-mod connection;
-
 use anyhow::{Context, Result, anyhow};
 use auth::XAuthorityManager;
 

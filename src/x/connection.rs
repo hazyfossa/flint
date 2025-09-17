@@ -1,3 +1,5 @@
+//! Deprecated
+
 use super::Display;
 
 use anyhow::{Context, Result};
