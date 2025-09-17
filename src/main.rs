@@ -8,11 +8,10 @@ mod utils;
 mod wayland;
 mod x;
 
-use std::path::PathBuf;
+use anyhow::{Result, anyhow};
+use pico_args::Arguments;
 
-use anyhow::Result;
-
-use template::{SessionManager, SessionMetadata};
+use template::{Session, SessionManager, SessionMetadata};
 use utils::runtime_dir::RuntimeDir;
 
 crate::define_env!("XDG_SEAT", Seat(String));
@@ -24,18 +23,42 @@ impl Default for Seat {
     }
 }
 
+fn run<T: Session>(mut args: Arguments) -> Result<()> {
+    if args.contains("--list") {
+        for entry in SessionMetadata::<T>::lookup_all() {
+            println!("{}", entry)
+        }
+        Ok(())
+    } else {
+        let name: String = args.free_from_str().map_err(|_| {
+            anyhow!(
+                "
+            No session name provided.
+            Use --list to list available sessions.    
+    "
+            )
+        })?;
+
+        let metadata = SessionMetadata::<T>::lookup(&name)?;
+        let manager = T::Manager::new_from_config()?;
+        manager.start(metadata)
+    }
+}
+
 fn main() -> Result<()> {
     let xdg_context = xdg::BaseDirectories::new();
     let runtime_dir = RuntimeDir::new(&xdg_context, "troglodyt")?;
 
-    let session_name = "i3";
-    let metadata = SessionMetadata::<x::Session>::lookup(session_name)?;
+    let mut args = Arguments::from_env();
 
-    let manager = <x::Session as template::Session>::Manager::with_config(
-        PathBuf::from("/usr/lib/Xorg"),
-        runtime_dir,
-        true,
-    );
+    let subcommand = args.subcommand()?;
+    let session_type_arg = match subcommand {
+        Some(ref arg) => arg.as_str(),
+        None => "x11",
+    };
 
-    manager.start(metadata)
+    match session_type_arg {
+        x::Session::XDG_TYPE => run::<x::Session>(args),
+        other => Err(anyhow!("{other} is not a valid session type.")),
+    }
 }

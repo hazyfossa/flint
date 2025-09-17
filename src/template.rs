@@ -2,6 +2,7 @@ use anyhow::{Context, Result, anyhow, bail};
 use freedesktop_file_parser::{self as parser, EntryType};
 
 use std::{
+    fmt::Display,
     fs::{DirEntry, File},
     io::{self, ErrorKind, Read},
     marker::PhantomData,
@@ -21,7 +22,6 @@ pub trait Session: Sized {
     // type Metadata = SessionMetadata<Self>; // requires unstable
 }
 
-// TODO: implement display
 pub struct SessionMetadata<T: Session> {
     _type: PhantomData<T>,
     name: String,
@@ -88,6 +88,12 @@ impl<T: Session> SessionMetadata<T> {
     }
 }
 
+impl<T: Session> Display for SessionMetadata<T> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.name) // TODO: more info here
+    }
+}
+
 // TODO: is setting this to the SessionMetadata.name appropriate?
 // The spec says this can contain list of values
 crate::define_env!("XDG_CURRENT_DESKTOP", SessionNameEnv(String));
@@ -96,6 +102,10 @@ crate::define_env!("XDG_SESSION_TYPE", SessionTypeEnv(String));
 
 pub trait SessionManager<T: Session>: Sized {
     fn setup_session(self) -> Result<T>;
+
+    fn new_from_config() -> Result<Self> {
+        todo!()
+    }
 
     fn start(self, metadata: SessionMetadata<T>) -> Result<()> {
         let session_instance = self.setup_session()?;
