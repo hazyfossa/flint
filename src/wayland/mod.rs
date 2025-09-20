@@ -2,25 +2,25 @@ use crate::{define_env, environment::EnvDiff, template};
 
 define_env!("WAYLAND_DISPLAY", Display(String));
 
-pub struct WaylandSession {
+pub struct Session {
     display: Display,
 }
 
-impl template::Session for WaylandSession {
+impl template::Session for Session {
     const XDG_TYPE: &str = "wayland";
     const LOOKUP_PATH: &str = "/usr/share/wayland-sessions/";
 
-    type Manager = WaylandManager;
+    type Manager = Manager;
 
     fn env(self) -> crate::environment::EnvDiff {
         EnvDiff::build().set(self.display).build()
     }
 }
 
-pub struct WaylandManager;
+pub struct Manager;
 
-impl template::SessionManager<WaylandSession> for WaylandManager {
-    fn setup_session(self) -> anyhow::Result<WaylandSession> {
+impl template::SessionManager<Session> for Manager {
+    fn setup_session(self) -> anyhow::Result<Session> {
         todo!()
     }
 }

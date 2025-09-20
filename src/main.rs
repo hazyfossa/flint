@@ -21,9 +21,9 @@ impl Default for Seat {
     }
 }
 
-fn run<T: Session>(mut args: Arguments) -> Result<()> {
+fn run<Session: template::Session>(mut args: Arguments) -> Result<()> {
     if args.contains("--list") {
-        for entry in T::lookup_all() {
+        for entry in Session::lookup_all() {
             println!("{}", entry)
         }
         Ok(())
@@ -37,9 +37,10 @@ fn run<T: Session>(mut args: Arguments) -> Result<()> {
             )
         })?;
 
-        let metadata = T::lookup(&name)?;
-        let manager = T::Manager::new_from_config()?;
+        let metadata = Session::lookup(&name)?;
+        let manager = Session::Manager::new_from_config()?;
         let ret = manager.start(metadata)?;
+
         match ret.success() {
             true => Ok(()),
             false => Err(anyhow!(
@@ -52,6 +53,17 @@ fn run<T: Session>(mut args: Arguments) -> Result<()> {
     }
 }
 
+macro_rules! dispatch_session {
+    ($xdg_type:expr, $args:expr, [$($session:ty),+]) => {
+        match $xdg_type {
+            $(
+                <$session>::XDG_TYPE => run::<$session>($args),
+            )+
+            other => Err(anyhow!("{other} is not a valid session type.")),
+        }
+    };
+}
+
 fn main() -> Result<()> {
     let mut args = Arguments::from_env();
 
@@ -61,8 +73,5 @@ fn main() -> Result<()> {
         None => "x11",
     };
 
-    match session_type_arg {
-        x::Session::XDG_TYPE => run::<x::Session>(args),
-        other => Err(anyhow!("{other} is not a valid session type.")),
-    }
+    dispatch_session!(session_type_arg, args, [x::Session, wayland::Session])
 }

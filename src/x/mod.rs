@@ -152,7 +152,7 @@ impl template::Session for Session {
     const LOOKUP_PATH: &str = "/usr/share/xsessions";
     const XDG_TYPE: &str = "x11";
 
-    type Manager = XorgManager;
+    type Manager = Manager;
 
     fn env(self) -> EnvDiff {
         EnvDiff::build()
@@ -166,13 +166,13 @@ impl template::Session for Session {
     }
 }
 
-pub struct XorgManager {
+pub struct Manager {
     // TODO: config
     xorg_path: PathBuf,
     lock_authority: bool,
 }
 
-impl XorgManager {
+impl Manager {
     fn spawn_server(
         &self,
         authority: PathBuf,
@@ -206,7 +206,7 @@ impl XorgManager {
     }
 }
 
-impl template::SessionManager<Session> for XorgManager {
+impl template::SessionManager<Session> for Manager {
     fn setup_session(self) -> Result<Session> {
         let vt = VtNumber::current().context("VT not allocated or XDG_VTNR is unset")?;
         let seat = Seat::current().unwrap_or_default();
