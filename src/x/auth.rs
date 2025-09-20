@@ -21,8 +21,8 @@ pub struct ClientAuthorityEnv(OsString);
 impl EnvValue for ClientAuthorityEnv {
     const KEY: &str = "XAUTHORITY";
 
-    fn serialize(&self) -> OsString {
-        self.0.clone()
+    fn serialize(self) -> OsString {
+        self.0
     }
 
     fn deserialize(value: OsString) -> Result<Self> {

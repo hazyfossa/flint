@@ -1,6 +1,6 @@
 use crate::{
     define_env,
-    environment::EnvDiff,
+    environment::{Env, EnvContainer},
     template::{self, FreedesktopMetadata},
 };
 
@@ -18,9 +18,11 @@ impl template::Session for Session {
     const XDG_TYPE: &str = "wayland";
 
     type Manager = Manager;
+}
 
-    fn env(self) -> crate::environment::EnvDiff {
-        EnvDiff::build().set(self.display).build()
+impl EnvContainer for Session {
+    fn env_diff(self) -> crate::environment::Env {
+        Env::new().set(self.display)
     }
 }
 

@@ -13,7 +13,7 @@ use std::{
 
 use crate::{
     Seat,
-    environment::{EnvDiff, EnvValue},
+    environment::{Env, EnvContainer, EnvValue},
     template::{self, FreedesktopMetadata},
     tty::VtNumber,
     utils::{
@@ -42,7 +42,7 @@ impl Display {
 impl EnvValue for Display {
     const KEY: &str = "DISPLAY";
 
-    fn serialize(&self) -> OsString {
+    fn serialize(self) -> OsString {
         format!(":{}", self.0).into()
     }
 
@@ -156,16 +156,17 @@ impl template::Session for Session {
     const XDG_TYPE: &str = "x11";
 
     type Manager = Manager;
+}
 
-    fn env(self) -> EnvDiff {
-        EnvDiff::build()
+impl EnvContainer for Session {
+    fn env_diff(self) -> Env {
+        Env::new()
             .set(self.display)
             .set(self.client_authority)
             .set(self.window_path)
             // TODO: a better place would be right where we pull those with ::current
             .unset::<Seat>()
             .unset::<VtNumber>()
-            .build()
     }
 }
 

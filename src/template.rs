@@ -9,14 +9,12 @@ use std::{
     process::{self, Command},
 };
 
-use crate::environment::{EnvDiff, EnvRecipient};
+use crate::environment::{Env, EnvContainer, EnvRecipient};
 
-pub trait Session: Sized + SessionMetadataLookup {
+pub trait Session: Sized + EnvContainer + SessionMetadataLookup {
     const XDG_TYPE: &str;
 
     type Manager: SessionManager<Self>;
-
-    fn env(self) -> EnvDiff; // TODO: This should be a trait
 }
 
 pub struct SessionMetadata {
@@ -118,11 +116,10 @@ pub trait SessionManager<T: Session>: Sized {
     fn start(self, metadata: SessionMetadata) -> Result<process::ExitStatus> {
         let session_instance = self.setup_session()?;
 
-        let env = EnvDiff::build()
+        let env = Env::new()
             .set(SessionNameEnv(metadata.name))
             .set(SessionTypeEnv(T::XDG_TYPE.to_string()))
-            .build()
-            + session_instance.env();
+            + session_instance.env_diff();
 
         let mut command = Command::new(metadata.executable);
         let mut process = command
