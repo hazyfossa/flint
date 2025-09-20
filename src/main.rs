@@ -57,9 +57,7 @@ fn run<Session: template::Session>(mut args: Arguments) -> Result<()> {
 macro_rules! dispatch_session {
     ($xdg_type:expr, $args:expr, [$($session:ty),+]) => {
         match $xdg_type {
-            $(
-                <$session>::XDG_TYPE => run::<$session>($args),
-            )+
+            $( <$session>::XDG_TYPE => run::<$session>($args), )+
             other => Err(anyhow!("{other} is not a valid session type.")),
         }
     };

@@ -5,76 +5,73 @@ use std::{
     fmt::Display,
     fs::{DirEntry, File},
     io::{self, ErrorKind, Read},
-    marker::PhantomData,
     path::PathBuf,
     process::{self, Command},
 };
 
 use crate::environment::{EnvDiff, EnvRecipient};
 
-pub trait Session: Sized {
-    const LOOKUP_PATH: &str;
+pub trait Session: Sized + SessionMetadataLookup {
     const XDG_TYPE: &str;
 
     type Manager: SessionManager<Self>;
 
     fn env(self) -> EnvDiff; // TODO: This should be a trait
-
-    fn lookup(name: &str) -> Result<SessionMetadata<Self>> {
-        SessionMetadata::<Self>::lookup(name)
-    }
-
-    fn lookup_all() -> Vec<SessionMetadata<Self>> {
-        SessionMetadata::<Self>::lookup_all()
-    }
 }
 
-pub struct SessionMetadata<T: Session> {
-    _type: PhantomData<T>,
+pub struct SessionMetadata {
     name: String,
     comment: Option<String>,
     executable: PathBuf,
 }
 
-impl<T: Session> SessionMetadata<T> {
-    fn parse_file(file: &mut File) -> Result<Self> {
-        let mut buf = String::new();
-        file.read_to_string(&mut buf)?;
+pub trait SessionMetadataLookup {
+    fn lookup(name: &str) -> Result<SessionMetadata>;
+    fn lookup_all() -> Vec<SessionMetadata>;
+}
 
-        let parsed = parser::parse(&buf)?.entry;
+pub trait FreedesktopMetadata: Session {
+    const LOOKUP_PATH: &str;
+}
 
-        let app = match parsed.entry_type {
-            EntryType::Application(app) => app,
-            x => bail!("Not a valid entry type for a session: {x}",),
-        };
+fn parse_freedesktop_file(file: &mut File) -> Result<SessionMetadata> {
+    let mut buf = String::new();
+    file.read_to_string(&mut buf)?;
 
-        // TODO: does it make sense to check for try_exec here?
-        let executable = app
-            .exec
-            .ok_or(anyhow!("Session does not define an executable"))?
-            .into();
+    let parsed = parser::parse(&buf)?.entry;
 
-        Ok(Self {
-            _type: PhantomData,
-            name: parsed.name.default,
-            comment: parsed.comment.map(|x| x.default),
-            executable,
-        })
-    }
+    let app = match parsed.entry_type {
+        EntryType::Application(app) => app,
+        x => bail!("Not a valid entry type for a session: {x}",),
+    };
 
-    fn lookup(name: &str) -> Result<Self> {
-        let path = PathBuf::from(T::LOOKUP_PATH).join(format!("{name}.desktop"));
+    // TODO: does it make sense to check for try_exec here?
+    let executable = app
+        .exec
+        .ok_or(anyhow!("Session does not define an executable"))?
+        .into();
+
+    Ok(SessionMetadata {
+        name: parsed.name.default,
+        comment: parsed.comment.map(|x| x.default),
+        executable,
+    })
+}
+
+impl<T: FreedesktopMetadata> SessionMetadataLookup for T {
+    fn lookup(name: &str) -> Result<SessionMetadata> {
+        let path = PathBuf::from(Self::LOOKUP_PATH).join(format!("{name}.desktop"));
 
         let mut file = File::open(path).map_err(|e| match e.kind() {
             ErrorKind::NotFound => anyhow!("Such a session is not defined"),
             _ => e.into(),
         })?;
 
-        Self::parse_file(&mut file).context("Session definition is incorrect")
+        parse_freedesktop_file(&mut file).context("Session definition is incorrect")
     }
 
-    fn lookup_all() -> Vec<Self> {
-        let dir = match PathBuf::from(T::LOOKUP_PATH).read_dir() {
+    fn lookup_all() -> Vec<SessionMetadata> {
+        let dir = match PathBuf::from(Self::LOOKUP_PATH).read_dir() {
             Ok(dir) => dir,
             Err(_) => return Vec::new(), // TODO: consider propagating error if it is not "path missing"
         };
@@ -90,12 +87,12 @@ impl<T: Session> SessionMetadata<T> {
         }
 
         dir.filter_map(files)
-            .filter_map(|mut file| Self::parse_file(&mut file).ok())
+            .filter_map(|mut file| parse_freedesktop_file(&mut file).ok())
             .collect()
     }
 }
 
-impl<T: Session> Display for SessionMetadata<T> {
+impl Display for SessionMetadata {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", self.name)?;
         if let Some(comment) = &self.comment {
@@ -118,7 +115,7 @@ pub trait SessionManager<T: Session>: Sized {
         todo!()
     }
 
-    fn start(self, metadata: SessionMetadata<T>) -> Result<process::ExitStatus> {
+    fn start(self, metadata: SessionMetadata) -> Result<process::ExitStatus> {
         let session_instance = self.setup_session()?;
 
         let env = EnvDiff::build()

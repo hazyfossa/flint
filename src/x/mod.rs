@@ -14,7 +14,7 @@ use std::{
 use crate::{
     Seat,
     environment::{EnvDiff, EnvValue},
-    template,
+    template::{self, FreedesktopMetadata},
     tty::VtNumber,
     utils::{
         fd::{CommandFdCtxExt, FdContext},
@@ -148,8 +148,11 @@ pub struct Session {
     window_path: WindowPath,
 }
 
-impl template::Session for Session {
+impl FreedesktopMetadata for Session {
     const LOOKUP_PATH: &str = "/usr/share/xsessions";
+}
+
+impl template::Session for Session {
     const XDG_TYPE: &str = "x11";
 
     type Manager = Manager;

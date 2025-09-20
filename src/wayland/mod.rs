@@ -1,4 +1,8 @@
-use crate::{define_env, environment::EnvDiff, template};
+use crate::{
+    define_env,
+    environment::EnvDiff,
+    template::{self, FreedesktopMetadata},
+};
 
 define_env!("WAYLAND_DISPLAY", Display(String));
 
@@ -6,9 +10,12 @@ pub struct Session {
     display: Display,
 }
 
+impl FreedesktopMetadata for Session {
+    const LOOKUP_PATH: &str = "/usr/share/wayland-sessions/";
+}
+
 impl template::Session for Session {
     const XDG_TYPE: &str = "wayland";
-    const LOOKUP_PATH: &str = "/usr/share/wayland-sessions/";
 
     type Manager = Manager;
 
