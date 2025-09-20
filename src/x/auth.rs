@@ -95,8 +95,10 @@ impl XAuthorityManager {
 
         let path = self.directory.join("server-authority");
 
-        let mut xauth_file =
-            AuthorityFile::create(&path).context(format!("Failed to create {path:?}"))?;
+        let mut xauth_file = self
+            .create_auth_file(&path)
+            .context(format!("Failed to create {path:?}"))?;
+
         xauth_file.set(authority)?;
 
         Ok(path)
@@ -125,14 +127,16 @@ impl XAuthorityManager {
 
         let path = self.directory.join("client-authority");
 
-        let mut xauth_file =
-            AuthorityFile::create(&path).context(format!("Failed to create {path:?}"))?;
+        let mut xauth_file = self
+            .create_auth_file(&path)
+            .context(format!("Failed to create {path:?}"))?;
+
         xauth_file.set(authority)?;
 
         Ok(ClientAuthorityEnv(path.into()))
     }
 
-    fn seal(self) {
-        todo!()
-    }
+    // fn seal(self) {
+    //     todo!()
+    // }
 }
