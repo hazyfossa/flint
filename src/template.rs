@@ -20,7 +20,13 @@ pub trait Session: Sized {
 
     fn env(self) -> EnvDiff; // TODO: This should be a trait
 
-    // type Metadata = SessionMetadata<Self>; // requires unstable
+    fn lookup(name: &str) -> Result<SessionMetadata<Self>> {
+        SessionMetadata::<Self>::lookup(name)
+    }
+
+    fn lookup_all() -> Vec<SessionMetadata<Self>> {
+        SessionMetadata::<Self>::lookup_all()
+    }
 }
 
 pub struct SessionMetadata<T: Session> {
@@ -56,7 +62,7 @@ impl<T: Session> SessionMetadata<T> {
         })
     }
 
-    pub fn lookup(name: &str) -> Result<Self> {
+    fn lookup(name: &str) -> Result<Self> {
         let path = PathBuf::from(T::LOOKUP_PATH).join(format!("{name}.desktop"));
 
         let mut file = File::open(path).map_err(|e| match e.kind() {
@@ -67,7 +73,7 @@ impl<T: Session> SessionMetadata<T> {
         Self::parse_file(&mut file).context("Session definition is incorrect")
     }
 
-    pub fn lookup_all() -> Vec<Self> {
+    fn lookup_all() -> Vec<Self> {
         let dir = match PathBuf::from(T::LOOKUP_PATH).read_dir() {
             Ok(dir) => dir,
             Err(_) => return Vec::new(), // TODO: consider propagating error if it is not "path missing"

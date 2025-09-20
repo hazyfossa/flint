@@ -10,7 +10,7 @@ mod x;
 use anyhow::{Result, anyhow};
 use pico_args::Arguments;
 
-use template::{Session, SessionManager, SessionMetadata};
+use template::{Session, SessionManager};
 
 crate::define_env!("XDG_SEAT", Seat(String));
 
@@ -23,7 +23,7 @@ impl Default for Seat {
 
 fn run<T: Session>(mut args: Arguments) -> Result<()> {
     if args.contains("--list") {
-        for entry in SessionMetadata::<T>::lookup_all() {
+        for entry in T::lookup_all() {
             println!("{}", entry)
         }
         Ok(())
@@ -37,7 +37,7 @@ fn run<T: Session>(mut args: Arguments) -> Result<()> {
             )
         })?;
 
-        let metadata = SessionMetadata::<T>::lookup(&name)?;
+        let metadata = T::lookup(&name)?;
         let manager = T::Manager::new_from_config()?;
         let ret = manager.start(metadata)?;
         match ret.success() {
