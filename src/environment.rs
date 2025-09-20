@@ -99,9 +99,10 @@ pub trait EnvRecipient {
     fn merge_env(&mut self, ctx: EnvDiff) -> &mut Self;
 }
 
-pub trait ExternalEnvRecipient {
-    fn merge_env(&self, ctx: EnvDiff) -> Result<()>;
-}
+// NOTE: dbus
+// pub trait ExternalEnvRecipient {
+//     fn merge_env(&self, ctx: EnvDiff) -> Result<()>;
+// }
 
 impl EnvRecipient for Command {
     fn merge_env(&mut self, ctx: EnvDiff) -> &mut Self {

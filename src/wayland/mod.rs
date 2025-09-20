@@ -1,8 +1,10 @@
-use crate::{define_env, template};
+use crate::{define_env, environment::EnvDiff, template};
 
 define_env!("WAYLAND_DISPLAY", Display(String));
 
-pub struct WaylandSession;
+pub struct WaylandSession {
+    display: Display,
+}
 
 impl template::Session for WaylandSession {
     const XDG_TYPE: &str = "wayland";
@@ -11,7 +13,7 @@ impl template::Session for WaylandSession {
     type Manager = WaylandManager;
 
     fn env(self) -> crate::environment::EnvDiff {
-        todo!()
+        EnvDiff::build().set(self.display).build()
     }
 }
 

@@ -7,7 +7,7 @@ use std::{
     ffi::OsString,
     io::{BufRead, BufReader, PipeReader, pipe},
     path::PathBuf,
-    process::{Child, Command, Stdio},
+    process::{self, Child, Command, Stdio},
     thread::{self, JoinHandle},
 };
 
@@ -19,8 +19,6 @@ use crate::{
     utils::{
         fd::{CommandFdCtxExt, FdContext},
         misc::OsStringExt,
-        runtime_dir::RuntimeDir,
-        subprocess::{ExitStatusExt, Ret},
     },
     x::auth::ClientAuthorityEnv,
 };
@@ -36,9 +34,9 @@ impl Display {
         self.0
     }
 
-    pub fn local_socket(&self) -> String {
-        format!("/tmp/.X11-unix/X{}", self.0)
-    }
+    // pub fn local_socket(&self) -> String {
+    //     format!("/tmp/.X11-unix/X{}", self.0)
+    // }
 }
 
 impl EnvValue for Display {
@@ -118,7 +116,7 @@ impl XWatcher {
         println!("Xorg: {line}") // TODO: log levels
     }
 
-    fn handler(mut self) -> Ret {
+    fn handler(mut self) -> process::ExitStatus {
         let mut stdout = BufReader::new(
             self.process
                 .stderr
@@ -134,10 +132,9 @@ impl XWatcher {
         self.process
             .wait()
             .expect("Xorg not started, yet attaching logger")
-            .context_process_name("Xorg".into())
     }
 
-    fn start_thread(self) -> Result<JoinHandle<Ret>> {
+    fn start_thread(self) -> Result<JoinHandle<process::ExitStatus>> {
         thread::Builder::new()
             .name("Xorg watcher".into())
             .spawn(|| self.handler())
@@ -162,6 +159,9 @@ impl template::Session for Session {
             .set(self.display)
             .set(self.client_authority)
             .set(self.window_path)
+            // TODO: a better place would be right where we pull those with ::current
+            .unset::<Seat>()
+            .unset::<VtNumber>()
             .build()
     }
 }
@@ -169,18 +169,7 @@ impl template::Session for Session {
 pub struct XorgManager {
     // TODO: config
     xorg_path: PathBuf,
-    runtime_dir: RuntimeDir,
     lock_authority: bool,
-}
-
-impl XorgManager {
-    pub fn with_config(xorg_path: PathBuf, runtime_dir: RuntimeDir, lock_authority: bool) -> Self {
-        Self {
-            xorg_path,
-            runtime_dir,
-            lock_authority,
-        }
-    }
 }
 
 impl XorgManager {
@@ -232,7 +221,7 @@ impl template::SessionManager<Session> for XorgManager {
             .context("Failed to define server authority")?;
 
         let (future_display, process) = self.spawn_server(server_authority, vt, seat)?;
-        let watcher = XWatcher { process }.start_thread()?; // TODO: requires changes to trait
+        XWatcher { process }.start_thread()?; // TODO: requires changes to trait
 
         // NOTE: this will block until the X server is ready
         if let Some(display) = future_display.wait()? {

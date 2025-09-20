@@ -1,5 +1,4 @@
-#![allow(dead_code)]
-
+#[allow(dead_code)]
 mod console;
 mod environment;
 mod login;
@@ -40,7 +39,16 @@ fn run<T: Session>(mut args: Arguments) -> Result<()> {
 
         let metadata = SessionMetadata::<T>::lookup(&name)?;
         let manager = T::Manager::new_from_config()?;
-        manager.start(metadata)
+        let ret = manager.start(metadata)?;
+        match ret.success() {
+            true => Ok(()),
+            false => Err(anyhow!(
+                "Main session process exited with status: {}",
+                ret.code()
+                    .and_then(|code| Some(code.to_string()))
+                    .unwrap_or("unknown".to_string())
+            )),
+        }
     }
 }
 

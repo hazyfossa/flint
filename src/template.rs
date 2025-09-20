@@ -7,9 +7,10 @@ use std::{
     io::{self, ErrorKind, Read},
     marker::PhantomData,
     path::PathBuf,
+    process::{self, Command},
 };
 
-use crate::environment::EnvDiff;
+use crate::environment::{EnvDiff, EnvRecipient};
 
 pub trait Session: Sized {
     const LOOKUP_PATH: &str;
@@ -90,7 +91,11 @@ impl<T: Session> SessionMetadata<T> {
 
 impl<T: Session> Display for SessionMetadata<T> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.name) // TODO: more info here
+        write!(f, "{}", self.name)?;
+        if let Some(comment) = &self.comment {
+            write!(f, ": {}", comment)?;
+        };
+        writeln!(f, "")
     }
 }
 
@@ -107,7 +112,7 @@ pub trait SessionManager<T: Session>: Sized {
         todo!()
     }
 
-    fn start(self, metadata: SessionMetadata<T>) -> Result<()> {
+    fn start(self, metadata: SessionMetadata<T>) -> Result<process::ExitStatus> {
         let session_instance = self.setup_session()?;
 
         let env = EnvDiff::build()
@@ -116,8 +121,12 @@ pub trait SessionManager<T: Session>: Sized {
             .build()
             + session_instance.env();
 
-        // TODO: spawn main executable
+        let mut command = Command::new(metadata.executable);
+        let mut process = command
+            .merge_env(env)
+            .spawn()
+            .context("Failed to spawn main session process")?;
 
-        Ok(())
+        Ok(process.wait().unwrap())
     }
 }

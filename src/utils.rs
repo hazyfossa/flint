@@ -18,7 +18,7 @@ pub mod misc {
 }
 
 pub mod fd {
-    use std::{ops::Range, os::fd::OwnedFd, path::PathBuf, process::Command};
+    use std::{ops::Range, os::fd::OwnedFd, process::Command};
 
     use anyhow::{Result, anyhow};
     use command_fds::{CommandFdExt, FdMapping};
@@ -58,41 +58,22 @@ pub mod fd {
 
     impl CommandFdCtxExt for Command {
         fn with_fd_context(&mut self, fd_ctx: FdContext) -> &mut Self {
-            self.fd_mappings(fd_ctx.mappings)
-                .expect("fd context generated invalid mappings") // TODO: is this a safe assumtion?
+            self.fd_mappings(fd_ctx.mappings).expect(
+                "Fd collision at context detected at runtime.
+                Check if any manual mappings overlap with free_fd_source.",
+            )
         }
     }
 
     pub struct PassedFd(u32);
 
     impl PassedFd {
-        pub fn path(&self) -> PathBuf {
-            PathBuf::from("/proc/self/fd/").join(self.0.to_string())
-        }
+        // pub fn path(&self) -> PathBuf {
+        //     PathBuf::from("/proc/self/fd/").join(self.0.to_string())
+        // }
 
         pub fn num(&self) -> u32 {
             self.0
-        }
-    }
-}
-
-pub mod timer {
-    use std::time::{Duration, Instant};
-
-    pub struct Timer {
-        started: Instant,
-    }
-
-    impl Timer {
-        pub fn start() -> Self {
-            Self {
-                started: Instant::now(),
-            }
-        }
-
-        pub fn measure(&self) -> Duration {
-            let now = Instant::now();
-            now - self.started
         }
     }
 }
@@ -151,68 +132,6 @@ pub mod runtime_dir {
     impl Drop for RuntimeDir {
         fn drop(&mut self) {
             _ = fs::remove_dir(self.path.clone())
-        }
-    }
-}
-
-pub mod subprocess {
-    use std::{
-        os::unix::process::CommandExt,
-        process::{Command, ExitStatus},
-    };
-
-    use anyhow::{Result, anyhow};
-    use rustix::process::{self, Signal};
-
-    // TODO: This can probably be done MUCH better with proper errors in place of anyhow
-
-    pub struct Ret {
-        code: Option<i32>,
-        process_name: String,
-    }
-
-    impl Ret {
-        pub fn ok(self) -> Result<()> {
-            let process_name = self.process_name;
-
-            match self.code {
-                Some(0) => Ok(()),
-                Some(err_status) => {
-                    Err(anyhow!("{process_name} exited with status: {err_status}."))
-                }
-                None => Err(anyhow!("{process_name} terminated by signal.")),
-            }
-        }
-    }
-
-    pub trait ExitStatusExt {
-        fn context_process_name(self, process_name: String) -> Ret;
-    }
-
-    impl ExitStatusExt for ExitStatus {
-        fn context_process_name(self, process_name: String) -> Ret {
-            Ret {
-                code: self.code(),
-                process_name,
-            }
-        }
-    }
-
-    pub trait CommandLifetimeExt {
-        fn bind_lifetime(&mut self) -> &mut Self;
-    }
-
-    impl CommandLifetimeExt for Command {
-        fn bind_lifetime(&mut self) -> &mut Self {
-            // TODO: is the safety of rustix enough here?
-            unsafe {
-                self.pre_exec(|| {
-                    Ok(process::set_parent_process_death_signal(Some(
-                        Signal::KILL,
-                    ))?)
-                });
-            }
-            self
         }
     }
 }
