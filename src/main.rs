@@ -1,8 +1,9 @@
-#[allow(dead_code)]
-mod console;
 mod environment;
 mod login;
 mod template;
+#[allow(dead_code)]
+mod tty;
+mod users;
 mod utils;
 mod wayland;
 mod x;

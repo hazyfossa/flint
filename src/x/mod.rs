@@ -13,9 +13,9 @@ use std::{
 
 use crate::{
     Seat,
-    console::VtNumber,
     environment::{EnvDiff, EnvValue},
     template,
+    tty::VtNumber,
     utils::{
         fd::{CommandFdCtxExt, FdContext},
         misc::OsStringExt,
