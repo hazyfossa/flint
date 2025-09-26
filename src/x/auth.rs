@@ -43,8 +43,6 @@ fn get_hostname() -> Hostname {
 // TODO: is there anything we should do when hostname changes?
 // Session should stay alive as clients fallback to local
 // Are there any side-effects? What breaks?
-
-// TODO: allow for easy unlocked mode
 pub struct XAuthorityManager {
     lock: bool,
     directory: PathBuf,

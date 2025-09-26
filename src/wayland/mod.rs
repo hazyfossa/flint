@@ -16,7 +16,6 @@ impl FreedesktopMetadata for Session {
 
 impl template::Session for Session {
     const XDG_TYPE: &str = "wayland";
-
     type Manager = Manager;
 }
 

@@ -5,7 +5,6 @@ use anyhow::{Context, Result, anyhow};
 pub trait EnvValue: Sized {
     const KEY: &str;
 
-    // TODO: Consider making this own self
     fn serialize(self) -> OsString;
     fn deserialize(value: OsString) -> Result<Self>;
 

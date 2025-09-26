@@ -13,7 +13,6 @@ use crate::environment::{Env, EnvContainer, EnvRecipient};
 
 pub trait Session: Sized + EnvContainer + SessionMetadataLookup {
     const XDG_TYPE: &str;
-
     type Manager: SessionManager<Self>;
 }
 
@@ -25,6 +24,12 @@ pub struct SessionMetadata {
 
 pub trait SessionMetadataLookup {
     fn lookup(name: &str) -> Result<SessionMetadata>;
+
+    /// This function will return metadata for all available sessions
+    /// It is currently not guaranteed that a session can be started for each entry
+    /// I.e. the metadata can specify an executable that is unavailable.
+    ///
+    /// Entries with invalid metadata are silently discarded.
     fn lookup_all() -> Vec<SessionMetadata>;
 }
 
@@ -71,11 +76,10 @@ impl<T: FreedesktopMetadata> SessionMetadataLookup for T {
     fn lookup_all() -> Vec<SessionMetadata> {
         let dir = match PathBuf::from(Self::LOOKUP_PATH).read_dir() {
             Ok(dir) => dir,
-            Err(_) => return Vec::new(), // TODO: consider propagating error if it is not "path missing"
+            Err(_) => return Vec::new(),
         };
 
         fn files(entry: io::Result<DirEntry>) -> Option<File> {
-            // TODO: propagate errors
             let entry = entry.ok()?;
             if !entry.metadata().ok()?.is_file() {
                 return None;
