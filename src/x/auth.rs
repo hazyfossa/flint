@@ -55,8 +55,8 @@ impl XAuthorityManager {
         let cookie = make_cookie()?;
         let hostname = get_hostname();
 
-        let runtime_dir = runtime_dir::current();
-        let directory = runtime_dir.join(format!("vt-{}", vt.to_string()));
+        let runtime_dir = runtime_dir::current;
+        let directory = runtime_dir.get()?.join(format!("vt-{}", vt.to_string()));
 
         // TODO: what to do with dir on Xorg exit?
 

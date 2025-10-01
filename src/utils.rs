@@ -78,27 +78,52 @@ pub mod fd {
     }
 }
 
+pub mod globals {
+    use std::sync::OnceLock;
+
+    use anyhow::{Result, anyhow};
+
+    pub struct Global<T> {
+        inner: OnceLock<T>,
+        name: &'static str,
+    }
+
+    impl<T> Global<T> {
+        pub const fn define(name: &'static str) -> Self {
+            Self {
+                inner: OnceLock::new(),
+                name,
+            }
+        }
+
+        pub fn get(&self) -> Result<&T> {
+            self.inner
+                .get()
+                .ok_or(anyhow!("Global {} not initialized", self.name))
+        }
+
+        pub fn init(&self, object: T) -> Result<()> {
+            self.inner
+                .set(object)
+                .map_err(|_| anyhow!("Cannot initialize global {} twice", self.name))
+        }
+    }
+}
+
 pub mod runtime_dir {
     use std::{
         fs,
         ops::Deref,
         os::unix::fs::DirBuilderExt,
         path::{Path, PathBuf},
-        sync::OnceLock,
     };
 
     use anyhow::{Context, Result};
 
-    // TODO: clean error propagation. Possibly abandon lazy loading at all.
-    static RUNTIME_DIR: OnceLock<RuntimeDir> = OnceLock::new();
+    use crate::utils::globals::Global;
 
-    pub fn current() -> &'static RuntimeDir {
-        RUNTIME_DIR.get_or_init(|| {
-            let xdg_context = xdg::BaseDirectories::new();
-            RuntimeDir::create(&xdg_context, "troglodyt")
-                .expect("Error while creating runtime directory")
-        })
-    }
+    #[allow(non_upper_case_globals)]
+    pub const current: Global<RuntimeDir> = Global::define("runtime dir");
 
     #[derive(Debug)]
     pub struct RuntimeDir {

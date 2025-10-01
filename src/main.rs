@@ -8,10 +8,12 @@ mod utils;
 mod wayland;
 mod x;
 
-use anyhow::{Result, anyhow};
+use anyhow::{Context, Result, anyhow};
 use pico_args::Arguments;
 
 use template::{Session, SessionManager};
+
+use crate::utils::runtime_dir::{self, RuntimeDir};
 
 crate::define_env!("XDG_SEAT", Seat(String));
 
@@ -64,6 +66,12 @@ macro_rules! dispatch_session {
 }
 
 fn main() -> Result<()> {
+    let xdg_context = xdg::BaseDirectories::new();
+    runtime_dir::current.init(
+        RuntimeDir::create(&xdg_context, "troglodyt")
+            .context("Failed to create runtime directory")?,
+    )?;
+
     let mut args = Arguments::from_env();
 
     let subcommand = args.subcommand()?;
