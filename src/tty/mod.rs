@@ -1,23 +1,26 @@
-mod keyboard;
+mod ioctl;
 
 use std::{
-    fs::File,
     io::IsTerminal,
     os::fd::{AsRawFd, FromRawFd, OwnedFd},
+    process::Command,
 };
 
 use anyhow::{Context, Result, bail};
-use command_fds::FdMapping;
-use rustix::ioctl;
+use command_fds::{CommandFdExt, FdMapping};
+use rustix::fs::{Mode, OFlags};
 
 crate::define_env!("XDG_VTNR", pub VtNumber(u8));
 
-unsafe fn unsafe_clone_fd(fd: &OwnedFd) -> OwnedFd {
-    unsafe { OwnedFd::from_raw_fd(fd.as_raw_fd()) }
+impl VtNumber {
+    fn as_tty_string(&self) -> String {
+        format!("tty{}", self.to_string())
+    }
 }
 
-type IoChangeVt = ioctl::Setter<0x5606, VtNumber>;
-type IoWaitVT = ioctl::Setter<0x5607, VtNumber>;
+unsafe fn clone_fd(fd: &OwnedFd) -> OwnedFd {
+    unsafe { OwnedFd::from_raw_fd(fd.as_raw_fd()) }
+}
 
 pub struct VT {
     descriptor: OwnedFd,
@@ -26,38 +29,49 @@ pub struct VT {
 impl VT {
     pub fn open(number: VtNumber) -> Result<Self> {
         let number = number.to_string();
-        let file = File::open(format!("/dev/tty{number}"))
-            .context(format!("Failed to open tty {number}"))?;
 
-        if !file.is_terminal() {
-            bail!("Failed to open tty {number}: not a terminal")
-        }
+        let fd = rustix::fs::open(
+            format!("/dev/tty{number}"),
+            OFlags::RDWR | OFlags::NOCTTY,
+            Mode::from_bits_truncate(0o666),
+        )
+        .context(format!("Failed to open tty {number}"))?;
 
-        Ok(Self {
-            descriptor: file.into(),
-        })
+        Self::from_fd(fd)
     }
 
-    pub fn change_to(&self, number: VtNumber) -> Result<()> {
-        // TODO
-        unsafe {
-            ioctl::ioctl(&self.descriptor, IoChangeVt::new(number.clone()))?;
-            ioctl::ioctl(&self.descriptor, IoWaitVT::new(number))?;
-        }
-
-        Ok(())
+    pub fn from_fd(fd: OwnedFd) -> Result<Self> {
+        if !fd.is_terminal() {
+            bail!("descriptor is not a terminal")
+        };
+        Ok(Self { descriptor: fd })
     }
 
-    pub fn stdio_bind_mappings<'a>(&self) -> Vec<FdMapping> {
-        [0, 1, 2]
-            .iter()
-            // TODO: safety
-            .map(|i| unsafe {
-                FdMapping {
-                    parent_fd: unsafe_clone_fd(&self.descriptor),
-                    child_fd: *i,
-                }
-            })
-            .collect()
+    pub fn try_from_stdin() -> Option<Self> {
+        // TODO: this means that self.descriptor will be closed on drop.
+        // Is this appropriate for stdin?
+        let stdin = unsafe { OwnedFd::from_raw_fd(0) };
+        match Self::from_fd(stdin) {
+            Ok(terminal) => Some(terminal),
+            Err(_) => None,
+        }
+    }
+
+    pub fn bind<'a>(&self, command: &'a mut Command) -> Result<&'a mut Command> {
+        // TODO: consider moving this logic to session leader child
+        command.fd_mappings(
+            [0, 1, 2]
+                .iter()
+                // TODO: safety
+                .map(|i| unsafe {
+                    FdMapping {
+                        parent_fd: clone_fd(&self.descriptor),
+                        child_fd: *i,
+                    }
+                })
+                .collect(),
+        )?;
+        // TODO: set as controlling tty
+        Ok(command)
     }
 }
