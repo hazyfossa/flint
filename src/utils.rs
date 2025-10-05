@@ -123,7 +123,7 @@ pub mod runtime_dir {
     use crate::utils::globals::Global;
 
     #[allow(non_upper_case_globals)]
-    pub const current: Global<RuntimeDir> = Global::define("runtime dir");
+    pub static current: Global<RuntimeDir> = Global::define("runtime dir");
 
     #[derive(Debug)]
     pub struct RuntimeDir {
@@ -151,12 +151,6 @@ pub mod runtime_dir {
 
         fn deref(&self) -> &Self::Target {
             &self.path
-        }
-    }
-
-    impl Drop for RuntimeDir {
-        fn drop(&mut self) {
-            _ = fs::remove_dir(self.path.clone())
         }
     }
 }
