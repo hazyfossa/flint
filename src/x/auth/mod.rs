@@ -1,3 +1,11 @@
+#![allow(dead_code)] // TODO
+
+mod encoding;
+use encoding::*;
+mod file;
+use file::*;
+mod lock;
+
 use std::{
     ffi::OsString,
     fs::DirBuilder,
@@ -7,13 +15,14 @@ use std::{
 };
 
 use anyhow::{Context, Result};
-use libxauth::*;
+
 use rustix::{
     rand::{GetRandomFlags, getrandom},
     system::uname,
 };
 
 use super::Display;
+
 use crate::{environment::EnvValue, tty::VtNumber, utils::runtime_dir};
 
 pub struct ClientAuthorityEnv(OsString);
