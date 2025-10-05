@@ -134,3 +134,24 @@ pub trait SessionManager<T: Session>: Sized {
         Ok(process.wait().unwrap())
     }
 }
+
+#[macro_export]
+macro_rules! sessions {
+    ([$($session:ty),+]) => { // fn sessions([*session_types])
+        $crate::scope!{($all:tt) => {
+            #[macro_export]
+            macro_rules! _dispatch_session {
+                ($xdg_type:expr => $function:ident($all($args:tt)*)) => { // string => function(*arguments)
+                    match $xdg_type {
+                        // for T in session_types:
+                        //     T::XDG_TYPE => function::<T>(*arguments)
+                        $( <$session>::XDG_TYPE => $function::<$session>($all($args)*), )+
+                        //
+                        other => anyhow::bail!("{other} is not a valid session type."),
+                    }
+                }
+            }
+            pub use _dispatch_session as dispatch_session; // return _dispatch_session
+        }}
+    }
+}

@@ -3,14 +3,13 @@ mod login;
 mod template;
 #[allow(dead_code)]
 mod tty;
-mod users;
 mod utils;
 mod wayland;
 mod x;
 
 use anyhow::{Context, Result, anyhow};
-use pico_args::Arguments;
 
+use pico_args::Arguments;
 use template::{Session, SessionManager};
 
 use crate::utils::runtime_dir::{self, RuntimeDir};
@@ -23,6 +22,8 @@ impl Default for Seat {
         Self("seat0".into())
     }
 }
+
+crate::sessions!([x::Session, wayland::Session]);
 
 fn run<Session: template::Session>(mut args: Arguments) -> Result<()> {
     if args.contains("--list") {
@@ -56,17 +57,9 @@ fn run<Session: template::Session>(mut args: Arguments) -> Result<()> {
     }
 }
 
-macro_rules! dispatch_session {
-    ($xdg_type:expr, $args:expr, [$($session:ty),+]) => {
-        match $xdg_type {
-            $( <$session>::XDG_TYPE => run::<$session>($args), )+
-            other => Err(anyhow!("{other} is not a valid session type.")),
-        }
-    };
-}
-
 fn main() -> Result<()> {
     let xdg_context = xdg::BaseDirectories::new();
+
     runtime_dir::current.init(
         RuntimeDir::create(&xdg_context, "troglodyt")
             .context("Failed to create runtime directory")?,
@@ -80,5 +73,5 @@ fn main() -> Result<()> {
         None => "x11",
     };
 
-    dispatch_session!(session_type_arg, args, [x::Session, wayland::Session])
+    crate::dispatch_session!(session_type_arg => run(args))
 }
