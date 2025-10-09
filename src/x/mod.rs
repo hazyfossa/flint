@@ -2,6 +2,7 @@ mod auth;
 
 use anyhow::{Context, Result, anyhow};
 use auth::XAuthorityManager;
+use serde::Deserialize;
 
 use std::{
     ffi::OsString,
@@ -22,6 +23,8 @@ use crate::{
     },
     x::auth::ClientAuthorityEnv,
 };
+
+static DEFAULT_XORG_PATH: &str = "/usr/lib/Xorg";
 
 pub struct Display(u8);
 
@@ -170,10 +173,20 @@ impl EnvContainer for Session {
     }
 }
 
+#[derive(Deserialize)]
+#[serde(default)]
 pub struct Manager {
-    // TODO: config
     xorg_path: PathBuf,
     lock_authority: bool,
+}
+
+impl Default for Manager {
+    fn default() -> Self {
+        Self {
+            xorg_path: PathBuf::from(DEFAULT_XORG_PATH),
+            lock_authority: true,
+        }
+    }
 }
 
 impl Manager {
@@ -204,7 +217,7 @@ impl Manager {
             .with_fd_context(fd_ctx)
             .stderr(Stdio::piped())
             .spawn()
-            .context("Failed to spawn subprocess")?;
+            .context("Failed to spawn X server subprocess")?;
 
         Ok((display_rx, process))
     }

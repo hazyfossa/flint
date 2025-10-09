@@ -1,0 +1,4 @@
+version = "0.1"
+
+[sessions.x11]
+lock_authority = false

@@ -1,3 +1,5 @@
+use serde::Deserialize;
+
 use crate::{
     define_env,
     environment::{Env, EnvContainer},
@@ -25,7 +27,14 @@ impl EnvContainer for Session {
     }
 }
 
+#[derive(Deserialize)]
 pub struct Manager;
+
+impl Default for Manager {
+    fn default() -> Self {
+        Self {}
+    }
+}
 
 impl template::SessionManager<Session> for Manager {
     fn setup_session(self) -> anyhow::Result<Session> {

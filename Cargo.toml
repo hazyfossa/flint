@@ -11,3 +11,5 @@ rustix = { version = "1.0.8", features = ["fs", "process", "rand", "system"] }
 freedesktop-file-parser = { git = "https://github.com/BL-CZY/desktop_file_parser.git" }
 xdg = "3.0.0"
 pico-args = "0.5.0"
+serde = { version = "1.0.228", features = ["derive"] }
+toml = "0.9.7"

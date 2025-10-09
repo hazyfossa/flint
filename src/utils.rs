@@ -165,3 +165,57 @@ mod macro_scope {
         }
     }
 }
+
+pub mod config {
+    use std::{
+        collections::HashMap,
+        convert::Infallible,
+        fs::File,
+        io::{ErrorKind, Read},
+        path::PathBuf,
+    };
+
+    use anyhow::{Context, Result};
+    use pico_args::Arguments;
+    use serde::Deserialize;
+    use toml::Table;
+
+    type Partial = Table;
+
+    #[derive(Deserialize, Default, Debug)]
+    pub struct Config {
+        #[allow(dead_code)]
+        version: Option<String>,
+        pub session: HashMap<String, Partial>,
+    }
+
+    impl Config {
+        pub fn from_args(args: &mut Arguments, default_path: &str) -> Result<Self> {
+            let config_path = args
+                .opt_value_from_os_str::<_, _, Infallible>(["-c", "--config"], |path| {
+                    Ok(PathBuf::from(path))
+                })?
+                .unwrap_or(PathBuf::from(default_path));
+
+            Self::from_file(config_path).context("Failed to read config")
+        }
+
+        fn from_file(path: PathBuf) -> Result<Self> {
+            if !path.is_file() {
+                return Ok(Self::default());
+            }
+
+            let mut file = match File::open(&path) {
+                Err(e) if matches!(e.kind(), ErrorKind::NotFound) => return Ok(Self::default()),
+                other => other,
+            }
+            .context(format!("failed to open file {path:?}"))?;
+
+            let mut buf = Vec::new();
+            file.read_to_end(&mut buf)
+                .context(format!("failed to read file {path:?}"))?;
+
+            Ok(toml::from_slice(&buf).context("Invalid config")?)
+        }
+    }
+}

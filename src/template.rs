@@ -1,5 +1,6 @@
 use anyhow::{Context, Result, anyhow, bail};
 use freedesktop_file_parser::{self as parser, EntryType};
+use serde::de::DeserializeOwned;
 
 use std::{
     fmt::Display,
@@ -9,7 +10,10 @@ use std::{
     process::{self, Command},
 };
 
-use crate::environment::{Env, EnvContainer, EnvRecipient};
+use crate::{
+    environment::{Env, EnvContainer, EnvRecipient},
+    utils::config::Config,
+};
 
 pub trait Session: Sized + EnvContainer + SessionMetadataLookup {
     const XDG_TYPE: &str;
@@ -110,11 +114,16 @@ crate::define_env!("XDG_CURRENT_DESKTOP", SessionNameEnv(String));
 
 crate::define_env!("XDG_SESSION_TYPE", SessionTypeEnv(String));
 
-pub trait SessionManager<T: Session>: Sized {
+pub trait SessionManager<T: Session>: Sized + Default + DeserializeOwned {
     fn setup_session(self) -> Result<T>;
 
-    fn new_from_config() -> Result<Self> {
-        todo!()
+    fn new_from_config(config: &Config) -> Result<Self> {
+        let config = match config.session.get(T::XDG_TYPE) {
+            Some(config) => config.clone(), // TODO
+            None => return Ok(Self::default()),
+        };
+
+        Ok(config.try_into()?)
     }
 
     fn start(self, metadata: SessionMetadata) -> Result<process::ExitStatus> {
