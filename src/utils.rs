@@ -23,8 +23,6 @@ pub mod fd {
     use anyhow::{Result, anyhow};
     use command_fds::{CommandFdExt, FdMapping};
 
-    // TODO: allow any iterator of u32 as fd source to support non-continuous definitions
-    // low priority
     pub struct FdContext {
         free_fd_source: Range<u32>,
         mappings: Vec<FdMapping>,
@@ -170,12 +168,12 @@ pub mod config {
     use std::{
         collections::HashMap,
         convert::Infallible,
-        fs::File,
         io::{ErrorKind, Read},
         path::PathBuf,
     };
 
     use anyhow::{Context, Result};
+    use fs_err::File;
     use pico_args::Arguments;
     use serde::Deserialize;
     use toml::Table;
@@ -208,12 +206,10 @@ pub mod config {
             let mut file = match File::open(&path) {
                 Err(e) if matches!(e.kind(), ErrorKind::NotFound) => return Ok(Self::default()),
                 other => other,
-            }
-            .context(format!("failed to open file {path:?}"))?;
+            }?;
 
             let mut buf = Vec::new();
-            file.read_to_end(&mut buf)
-                .context(format!("failed to read file {path:?}"))?;
+            file.read_to_end(&mut buf)?;
 
             Ok(toml::from_slice(&buf).context("Invalid config")?)
         }

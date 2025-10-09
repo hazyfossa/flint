@@ -70,10 +70,7 @@ impl XAuthorityManager {
 
         // TODO: what to do with dir on Xorg exit?
 
-        DirBuilder::new()
-            .mode(0o700)
-            .create(&directory)
-            .context(format!("Failed to create {directory:?}"))?;
+        DirBuilder::new().mode(0o700).create(&directory)?;
 
         Ok(Self {
             lock,

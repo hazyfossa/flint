@@ -14,3 +14,4 @@ pico-args = "0.5.0"
 serde = { version = "1.0.228", features = ["derive"] }
 toml = "0.9.7"
 im = "15.1.0"
+fs-err = "3.1.3"

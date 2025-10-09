@@ -89,7 +89,6 @@ impl AuthorityFile {
 
     /// # Safety
     /// the caller should ensure no other process will open the same path
-    // TODO: add examples on how to guarantee that
     pub unsafe fn create_unlocked(path: &Path) -> io::Result<Self> {
         let file = Self::create_inner(path)?;
         Ok(Self { file, _lock: None })

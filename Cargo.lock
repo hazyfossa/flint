@@ -9,6 +9,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e16d2d3311acee920a9eb8d33b8cbc1787ce4a264e85f964c2404b969bdcd487"
 
 [[package]]
+name = "autocfg"
+version = "1.5.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c08606f8c3cbf4ce6ec8e28fb0014a2c086708fe954eaa885384a6165172e7e8"
+
+[[package]]
 name = "bitflags"
 version = "2.9.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -67,6 +73,15 @@ version = "0.3.1"
 source = "git+https://github.com/BL-CZY/desktop_file_parser.git#e272ff195830ce089f69cea288786ef4648b9ce5"
 dependencies = [
  "thiserror",
+]
+
+[[package]]
+name = "fs-err"
+version = "3.1.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6ad492b2cf1d89d568a43508ab24f98501fe03f2f31c01e1d0fe7366a71745d2"
+dependencies = [
+ "autocfg",
 ]
 
 [[package]]
@@ -301,6 +316,7 @@ dependencies = [
  "anyhow",
  "command-fds",
  "freedesktop-file-parser",
+ "fs-err",
  "im",
  "pico-args",
  "rustix",

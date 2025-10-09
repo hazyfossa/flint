@@ -1,10 +1,10 @@
 use anyhow::{Context, Result, anyhow, bail};
 use freedesktop_file_parser::{self as parser, EntryType};
+use fs_err::{DirEntry, File, read_dir};
 use serde::de::DeserializeOwned;
 
 use std::{
     fmt::Display,
-    fs::{DirEntry, File},
     io::{self, ErrorKind, Read},
     path::PathBuf,
     process::{self, Command},
@@ -33,7 +33,7 @@ pub trait SessionMetadataLookup {
     fn lookup_metadata_all() -> Vec<SessionMetadata>;
 }
 
-pub trait FreedesktopMetadata: SessionManager {
+pub trait FreedesktopMetadata {
     const LOOKUP_PATH: &str;
 }
 
@@ -74,7 +74,7 @@ impl<T: FreedesktopMetadata> SessionMetadataLookup for T {
     }
 
     fn lookup_metadata_all() -> Vec<SessionMetadata> {
-        let dir = match PathBuf::from(Self::LOOKUP_PATH).read_dir() {
+        let dir = match read_dir(Self::LOOKUP_PATH) {
             Ok(dir) => dir,
             Err(_) => return Vec::new(),
         };
@@ -130,12 +130,12 @@ pub trait SessionManager: Sized + Default + DeserializeOwned + SessionMetadataLo
         metadata: SessionMetadata,
         context: SessionContext,
     ) -> Result<process::ExitStatus> {
-        let session_instance = self.setup_session(context)?;
+        let session_instance_env = self.setup_session(context)?;
 
         let env = Env::empty()
             .set(SessionNameEnv(metadata.name))
             .set(SessionTypeEnv(Self::XDG_TYPE.to_string()))
-            .set(session_instance);
+            .set(session_instance_env);
 
         let mut command = Command::new(metadata.executable);
         let mut process = command
