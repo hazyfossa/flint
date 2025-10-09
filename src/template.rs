@@ -11,14 +11,10 @@ use std::{
 };
 
 use crate::{
+    context::SessionContext,
     environment::{Env, EnvContainer, EnvRecipient},
     utils::config::Config,
 };
-
-pub trait Session: Sized + EnvContainer + SessionMetadataLookup {
-    const XDG_TYPE: &str;
-    type Manager: SessionManager<Self>;
-}
 
 pub struct SessionMetadata {
     name: String,
@@ -27,17 +23,17 @@ pub struct SessionMetadata {
 }
 
 pub trait SessionMetadataLookup {
-    fn lookup(name: &str) -> Result<SessionMetadata>;
+    fn lookup_metadata(name: &str) -> Result<SessionMetadata>;
 
     /// This function will return metadata for all available sessions
     /// It is currently not guaranteed that a session can be started for each entry
     /// I.e. the metadata can specify an executable that is unavailable.
     ///
     /// Entries with invalid metadata are silently discarded.
-    fn lookup_all() -> Vec<SessionMetadata>;
+    fn lookup_metadata_all() -> Vec<SessionMetadata>;
 }
 
-pub trait FreedesktopMetadata: Session {
+pub trait FreedesktopMetadata: SessionManager {
     const LOOKUP_PATH: &str;
 }
 
@@ -66,7 +62,7 @@ fn parse_freedesktop_file(file: &mut File) -> Result<SessionMetadata> {
 }
 
 impl<T: FreedesktopMetadata> SessionMetadataLookup for T {
-    fn lookup(name: &str) -> Result<SessionMetadata> {
+    fn lookup_metadata(name: &str) -> Result<SessionMetadata> {
         let path = PathBuf::from(Self::LOOKUP_PATH).join(format!("{name}.desktop"));
 
         let mut file = File::open(path).map_err(|e| match e.kind() {
@@ -77,7 +73,7 @@ impl<T: FreedesktopMetadata> SessionMetadataLookup for T {
         parse_freedesktop_file(&mut file).context("Session definition is incorrect")
     }
 
-    fn lookup_all() -> Vec<SessionMetadata> {
+    fn lookup_metadata_all() -> Vec<SessionMetadata> {
         let dir = match PathBuf::from(Self::LOOKUP_PATH).read_dir() {
             Ok(dir) => dir,
             Err(_) => return Vec::new(),
@@ -114,11 +110,14 @@ crate::define_env!("XDG_CURRENT_DESKTOP", SessionNameEnv(String));
 
 crate::define_env!("XDG_SESSION_TYPE", SessionTypeEnv(String));
 
-pub trait SessionManager<T: Session>: Sized + Default + DeserializeOwned {
-    fn setup_session(self) -> Result<T>;
+pub trait SessionManager: Sized + Default + DeserializeOwned + SessionMetadataLookup {
+    const XDG_TYPE: &str;
+    type Env: EnvContainer;
+
+    fn setup_session(&self, context: SessionContext) -> Result<Self::Env>;
 
     fn new_from_config(config: &Config) -> Result<Self> {
-        let config = match config.session.get(T::XDG_TYPE) {
+        let config = match config.session.get(Self::XDG_TYPE) {
             Some(config) => config.clone(), // TODO
             None => return Ok(Self::default()),
         };
@@ -126,17 +125,21 @@ pub trait SessionManager<T: Session>: Sized + Default + DeserializeOwned {
         Ok(config.try_into()?)
     }
 
-    fn start(self, metadata: SessionMetadata) -> Result<process::ExitStatus> {
-        let session_instance = self.setup_session()?;
+    fn new_session(
+        self,
+        metadata: SessionMetadata,
+        context: SessionContext,
+    ) -> Result<process::ExitStatus> {
+        let session_instance = self.setup_session(context)?;
 
-        let env = Env::new()
+        let env = Env::empty()
             .set(SessionNameEnv(metadata.name))
-            .set(SessionTypeEnv(T::XDG_TYPE.to_string()))
-            + session_instance.env_diff();
+            .set(SessionTypeEnv(Self::XDG_TYPE.to_string()))
+            .set(session_instance);
 
         let mut command = Command::new(metadata.executable);
         let mut process = command
-            .merge_env(env)
+            .set_env(env)
             .spawn()
             .context("Failed to spawn main session process")?;
 

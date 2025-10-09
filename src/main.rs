@@ -1,3 +1,4 @@
+mod context;
 mod environment;
 mod login;
 mod template;
@@ -10,33 +11,30 @@ mod x;
 use anyhow::{Context, Result, anyhow};
 
 use pico_args::Arguments;
-use template::{Session, SessionManager};
+use template::SessionManager;
 
-use crate::utils::{
-    config::Config,
-    runtime_dir::{self, RuntimeDir},
+use crate::{
+    context::SessionContext,
+    utils::{
+        config::Config,
+        runtime_dir::{self, RuntimeDir},
+    },
 };
 
-crate::define_env!("XDG_SEAT", Seat(String));
+crate::sessions!([x::SessionManager, wayland::SessionManager]);
 
-impl Default for Seat {
-    fn default() -> Self {
-        // man sd-login says that seat0 always exists
-        Self("seat0".into())
-    }
-}
-
-crate::sessions!([x::Session, wayland::Session]);
-
-fn list<Session: template::Session>() -> Result<()> {
-    for entry in Session::lookup_all() {
+fn list<Session: template::SessionManager>() -> Result<()> {
+    for entry in Session::lookup_metadata_all() {
         println!("{}", entry)
     }
 
     Ok(())
 }
 
-fn run<Session: template::Session>(mut args: Arguments, config: Config) -> Result<()> {
+fn run<SessionManager: template::SessionManager>(
+    mut args: Arguments,
+    config: Config,
+) -> Result<()> {
     let name: String = args.free_from_str().map_err(|_| {
         anyhow!(
             "
@@ -46,10 +44,14 @@ fn run<Session: template::Session>(mut args: Arguments, config: Config) -> Resul
         )
     })?;
 
-    let metadata = Session::lookup(&name)?;
-    let manager = Session::Manager::new_from_config(&config).context("Invalid session config")?;
+    let metadata = SessionManager::lookup_metadata(&name)?;
+    let manager = SessionManager::new_from_config(&config).context("Invalid session config")?;
 
-    let ret = manager.start(metadata).context("Failed to start session")?;
+    let context = SessionContext::from_env(environment::system())?;
+
+    let ret = manager
+        .new_session(metadata, context)
+        .context("Failed to start session")?;
 
     match ret.success() {
         true => Ok(()),
@@ -69,7 +71,7 @@ fn daemon(_config: Config) -> Result<()> {
 fn cli(subcommand: &str, mut args: Arguments, config: Config) -> Result<()> {
     let session_type = args
         .opt_value_from_str(["-s", "--session-type"])?
-        .unwrap_or(x::Session::XDG_TYPE.to_string());
+        .unwrap_or(x::SessionManager::XDG_TYPE.to_string());
 
     match subcommand {
         "run" => crate::dispatch_session!(session_type.as_str() => run(args, config)),

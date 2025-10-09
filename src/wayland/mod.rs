@@ -1,43 +1,31 @@
 use serde::Deserialize;
 
 use crate::{
+    context::SessionContext,
     define_env,
-    environment::{Env, EnvContainer},
     template::{self, FreedesktopMetadata},
 };
 
-define_env!("WAYLAND_DISPLAY", Display(String));
+define_env!("WAYLAND_DISPLAY", pub Display(String));
 
-pub struct Session {
-    display: Display,
-}
-
-impl FreedesktopMetadata for Session {
+impl FreedesktopMetadata for SessionManager {
     const LOOKUP_PATH: &str = "/usr/share/wayland-sessions/";
 }
 
-impl template::Session for Session {
-    const XDG_TYPE: &str = "wayland";
-    type Manager = Manager;
-}
-
-impl EnvContainer for Session {
-    fn env_diff(self) -> crate::environment::Env {
-        Env::new().set(self.display)
-    }
-}
-
 #[derive(Deserialize)]
-pub struct Manager;
+pub struct SessionManager;
 
-impl Default for Manager {
+impl Default for SessionManager {
     fn default() -> Self {
         Self {}
     }
 }
 
-impl template::SessionManager<Session> for Manager {
-    fn setup_session(self) -> anyhow::Result<Session> {
+impl template::SessionManager for SessionManager {
+    const XDG_TYPE: &str = "wayland";
+    type Env = Display;
+
+    fn setup_session(&self, _context: SessionContext) -> anyhow::Result<Self::Env> {
         todo!()
     }
 }

@@ -13,8 +13,8 @@ use std::{
 };
 
 use crate::{
-    Seat,
-    environment::{Env, EnvContainer, EnvValue},
+    context::SessionContext,
+    environment::{Env, EnvValue},
     template::{self, FreedesktopMetadata},
     tty::VtNumber,
     utils::{
@@ -36,10 +36,6 @@ impl Display {
     pub fn number(&self) -> u8 {
         self.0
     }
-
-    // pub fn local_socket(&self) -> String {
-    //     format!("/tmp/.X11-unix/X{}", self.0)
-    // }
 }
 
 impl EnvValue for Display {
@@ -98,15 +94,15 @@ impl DisplayReceiver {
     }
 }
 
-crate::define_env!("WINDOWPATH", WindowPath(String));
+crate::define_env!("WINDOWPATH", pub WindowPath(String));
 
 impl WindowPath {
-    fn previous_plus_vt(vt: &VtNumber) -> Self {
-        let previous = Self::current().ok();
-        Self(match previous {
+    fn previous_plus_vt(env: &Env, vt: &VtNumber) -> Result<Self> {
+        let previous = env.peek::<Self>()?;
+        Ok(Self(match previous {
             Some(path) => format!("{}:{}", path.0, vt.to_string()),
             None => vt.to_string(),
-        })
+        }))
     }
 }
 
@@ -145,42 +141,14 @@ impl XWatcher {
     }
 }
 
-pub struct Session {
-    display: Display,
-    client_authority: ClientAuthorityEnv,
-    window_path: WindowPath,
-}
-
-impl FreedesktopMetadata for Session {
-    const LOOKUP_PATH: &str = "/usr/share/xsessions";
-}
-
-impl template::Session for Session {
-    const XDG_TYPE: &str = "x11";
-
-    type Manager = Manager;
-}
-
-impl EnvContainer for Session {
-    fn env_diff(self) -> Env {
-        Env::new()
-            .set(self.display)
-            .set(self.client_authority)
-            .set(self.window_path)
-            // TODO: a better place would be right where we pull those with ::current
-            .unset::<Seat>()
-            .unset::<VtNumber>()
-    }
-}
-
 #[derive(Deserialize)]
 #[serde(default)]
-pub struct Manager {
+pub struct SessionManager {
     xorg_path: PathBuf,
     lock_authority: bool,
 }
 
-impl Default for Manager {
+impl Default for SessionManager {
     fn default() -> Self {
         Self {
             xorg_path: PathBuf::from(DEFAULT_XORG_PATH),
@@ -189,12 +157,15 @@ impl Default for Manager {
     }
 }
 
-impl Manager {
+impl FreedesktopMetadata for SessionManager {
+    const LOOKUP_PATH: &str = "/usr/share/xsessions";
+}
+
+impl SessionManager {
     fn spawn_server(
         &self,
         authority: PathBuf,
-        vt: VtNumber,
-        seat: Seat,
+        context: SessionContext,
     ) -> Result<(DisplayReceiver, Child)> {
         let mut fd_ctx = FdContext::new(3..5);
 
@@ -203,8 +174,8 @@ impl Manager {
         // TODO: this is flaky. Unsetting env causes strange behaviour.
         // Ensure that Xorg always starts non-elevated or bypass Xorg.wrap entirely
         let command = xorg_path
-            .arg(format!("vt{}", vt.to_string()))
-            .args(["-seat".into(), seat.serialize()])
+            .arg(format!("vt{}", context.vt.to_string()))
+            .args(["-seat".into(), context.seat.serialize()])
             .args(["-auth".into(), authority.into_os_string()])
             .args(["-nolisten", "tcp"])
             .args(["-background", "none", "-noreset", "-keeptty", "-novtswitch"])
@@ -223,21 +194,23 @@ impl Manager {
     }
 }
 
-impl template::SessionManager<Session> for Manager {
-    fn setup_session(self) -> Result<Session> {
-        let vt = VtNumber::current().context("VT not allocated or XDG_VTNR is unset")?;
-        let seat = Seat::current().unwrap_or_default();
+impl template::SessionManager for SessionManager {
+    const XDG_TYPE: &str = "x11";
 
-        let window_path = WindowPath::previous_plus_vt(&vt);
+    type Env = (Display, ClientAuthorityEnv, WindowPath);
 
-        let authority_manager = XAuthorityManager::new(&vt, self.lock_authority)
+    fn setup_session(&self, context: SessionContext) -> Result<Self::Env> {
+        let env = &context.inherit_env;
+        let window_path = WindowPath::previous_plus_vt(env, &context.vt)?;
+
+        let authority_manager = XAuthorityManager::new(&context.vt, self.lock_authority)
             .context("Failed to setup authority manager")?;
 
         let server_authority = authority_manager
             .setup_server()
             .context("Failed to define server authority")?;
 
-        let (future_display, process) = self.spawn_server(server_authority, vt, seat)?;
+        let (future_display, process) = self.spawn_server(server_authority, context)?;
         XWatcher { process }.start_thread()?; // TODO: requires changes to trait
 
         // NOTE: this will block until the X server is ready
@@ -246,13 +219,7 @@ impl template::SessionManager<Session> for Manager {
                 .setup_client(&display)
                 .context("failed to define client authority")?;
 
-            let session = Session {
-                display,
-                client_authority,
-                window_path,
-            };
-
-            Ok(session)
+            Ok((display, client_authority, window_path))
         } else {
             Err(anyhow!("Internal Xorg error. See logs above for details."))
         }
