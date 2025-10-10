@@ -68,9 +68,25 @@ dependencies = [
 ]
 
 [[package]]
+name = "flint"
+version = "0.9.0"
+dependencies = [
+ "anyhow",
+ "command-fds",
+ "freedesktop-file-parser",
+ "fs-err",
+ "im",
+ "pico-args",
+ "rustix",
+ "serde",
+ "toml",
+ "xdg",
+]
+
+[[package]]
 name = "freedesktop-file-parser"
 version = "0.3.1"
-source = "git+https://github.com/BL-CZY/desktop_file_parser.git#e272ff195830ce089f69cea288786ef4648b9ce5"
+source = "git+https://github.com/BL-CZY/desktop_file_parser.git#f7e19dc19c02b673e5b3f33d765f66d1580ff39b"
 dependencies = [
  "thiserror",
 ]
@@ -308,22 +324,6 @@ name = "toml_writer"
 version = "1.0.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d163a63c116ce562a22cda521fcc4d79152e7aba014456fb5eb442f6d6a10109"
-
-[[package]]
-name = "troglodyt"
-version = "0.8.0"
-dependencies = [
- "anyhow",
- "command-fds",
- "freedesktop-file-parser",
- "fs-err",
- "im",
- "pico-args",
- "rustix",
- "serde",
- "toml",
- "xdg",
-]
 
 [[package]]
 name = "typenum"
