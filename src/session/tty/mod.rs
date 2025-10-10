@@ -1,3 +1,5 @@
+#![allow(dead_code)] // TODO
+
 mod ioctl;
 
 use std::{
@@ -10,7 +12,10 @@ use anyhow::{Context, Result, bail};
 use command_fds::{CommandFdExt, FdMapping};
 use rustix::fs::{Mode, OFlags};
 
-crate::define_env!("XDG_VTNR", pub VtNumber(u8));
+use super::manager::prelude::*;
+use crate::session::manager::SessionMetadataLookup;
+
+pub use crate::session::context::VtNumber;
 
 impl VtNumber {
     fn as_tty_string(&self) -> String {
@@ -73,5 +78,34 @@ impl VT {
         )?;
         // TODO: set as controlling tty
         Ok(command)
+    }
+}
+
+#[derive(Default, Deserialize)]
+pub struct SessionManager {}
+
+impl manager::SessionManager for SessionManager {
+    const XDG_TYPE: &str = "tty";
+
+    type Env = VtNumber;
+
+    fn new_session(
+        self,
+        _metadata: manager::SessionMetadata,
+        _context: SessionContext,
+    ) -> Result<std::process::ExitStatus> {
+        todo!()
+    }
+}
+
+impl SessionMetadataLookup for SessionManager {
+    fn lookup_metadata(_name: &str) -> Result<manager::SessionMetadata> {
+        // name here is an executable
+        todo!()
+    }
+
+    fn lookup_metadata_all() -> Vec<manager::SessionMetadata> {
+        // TODO: at least debian provides a list of shells
+        Vec::new()
     }
 }

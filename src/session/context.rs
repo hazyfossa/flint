@@ -1,7 +1,8 @@
 use anyhow::Result;
 
-use crate::{environment::Env, tty::VtNumber};
+use crate::environment::Env;
 
+crate::define_env!("XDG_VTNR", pub VtNumber(u8));
 crate::define_env!("XDG_SEAT", pub Seat(String));
 
 impl Default for Seat {

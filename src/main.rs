@@ -1,29 +1,22 @@
-mod context;
 mod environment;
 mod login;
-mod template;
+mod session;
 #[allow(dead_code)]
-mod tty;
 mod utils;
-mod wayland;
-mod x;
 
 use anyhow::{Context, Result, anyhow};
 
 use pico_args::Arguments;
-use template::SessionManager;
-
-use crate::{
-    context::SessionContext,
-    utils::{
-        config::Config,
-        runtime_dir::{self, RuntimeDir},
-    },
+use session::{
+    context::SessionContext, dispatch_session, manager::SessionManager as GenericSessionManager,
 };
 
-crate::sessions!([x::SessionManager, wayland::SessionManager]);
+use crate::utils::{
+    config::Config,
+    runtime_dir::{self, RuntimeDir},
+};
 
-fn list<Session: template::SessionManager>() -> Result<()> {
+fn list<Session: GenericSessionManager>() -> Result<()> {
     for entry in Session::lookup_metadata_all() {
         println!("{}", entry)
     }
@@ -31,10 +24,7 @@ fn list<Session: template::SessionManager>() -> Result<()> {
     Ok(())
 }
 
-fn run<SessionManager: template::SessionManager>(
-    mut args: Arguments,
-    config: Config,
-) -> Result<()> {
+fn run<SessionManager: GenericSessionManager>(mut args: Arguments, config: Config) -> Result<()> {
     let name: String = args.free_from_str().map_err(|_| {
         anyhow!(
             "
@@ -47,7 +37,7 @@ fn run<SessionManager: template::SessionManager>(
     let metadata = SessionManager::lookup_metadata(&name)?;
     let manager = SessionManager::new_from_config(&config).context("Invalid session config")?;
 
-    let context = SessionContext::from_env(environment::system())?;
+    let context = SessionContext::from_env(environment::current())?;
 
     let ret = manager
         .new_session(metadata, context)
@@ -71,11 +61,11 @@ fn daemon(_config: Config) -> Result<()> {
 fn cli(subcommand: &str, mut args: Arguments, config: Config) -> Result<()> {
     let session_type = args
         .opt_value_from_str(["-s", "--session-type"])?
-        .unwrap_or(x::SessionManager::XDG_TYPE.to_string());
+        .unwrap_or("x11".to_string());
 
     match subcommand {
-        "run" => crate::dispatch_session!(session_type.as_str() => run(args, config)),
-        "list" => crate::dispatch_session!(session_type.as_str() => list()),
+        "run" => dispatch_session!(session_type.as_str() => run(args, config)),
+        "list" => dispatch_session!(session_type.as_str() => list()),
         other => Err(anyhow!("Invalid subcommand: {other}")),
     }
 }

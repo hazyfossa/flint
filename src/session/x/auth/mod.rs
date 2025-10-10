@@ -23,7 +23,7 @@ use rustix::{
 
 use super::Display;
 
-use crate::{environment::EnvValue, tty::VtNumber, utils::runtime_dir};
+use crate::{environment::EnvValue, session::context::VtNumber, utils::runtime_dir};
 
 pub struct ClientAuthorityEnv(OsString);
 

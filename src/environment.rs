@@ -62,7 +62,7 @@ pub struct Env {
     state: HashMap<String, OsString>,
 }
 
-pub fn system() -> Env {
+pub fn current() -> Env {
     Env::from_values(
         env::vars_os()
             // Note: ignore all variables with non-unicode keys
@@ -169,5 +169,13 @@ variadic_env_impl! { a b c d e f g h i j k l }
 impl<T: EnvValue> EnvContainer for T {
     fn apply(self, env: Env) -> Env {
         env.bind(self)
+    }
+}
+
+impl EnvContainer for Env {
+    fn apply(self, env: Env) -> Env {
+        Self {
+            state: env.state.union(self.state),
+        }
     }
 }

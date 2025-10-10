@@ -10,11 +10,19 @@ use std::{
     process::{self, Command},
 };
 
+use super::context::SessionContext;
 use crate::{
-    context::SessionContext,
     environment::{Env, EnvContainer, EnvRecipient},
     utils::config::Config,
 };
+
+pub mod prelude {
+    pub use crate::session::{
+        context::SessionContext,
+        manager::{self, FreedesktopMetadata},
+    };
+    pub use serde::Deserialize;
+}
 
 pub struct SessionMetadata {
     name: String,
@@ -114,7 +122,10 @@ pub trait SessionManager: Sized + Default + DeserializeOwned + SessionMetadataLo
     const XDG_TYPE: &str;
     type Env: EnvContainer;
 
-    fn setup_session(&self, context: SessionContext) -> Result<Self::Env>;
+    fn setup_session(&self, context: SessionContext) -> Result<Self::Env> {
+        drop(context);
+        bail!("Not implemented")
+    }
 
     fn new_from_config(config: &Config) -> Result<Self> {
         let config = match config.session.get(Self::XDG_TYPE) {
@@ -125,6 +136,8 @@ pub trait SessionManager: Sized + Default + DeserializeOwned + SessionMetadataLo
         Ok(config.try_into()?)
     }
 
+    /// If you do not need fine-grained control over the startup flow
+    /// consider implementing setup_session() instead
     fn new_session(
         self,
         metadata: SessionMetadata,
@@ -148,8 +161,17 @@ pub trait SessionManager: Sized + Default + DeserializeOwned + SessionMetadataLo
 }
 
 #[macro_export]
+macro_rules! session_type {
+    ($session_type:tt) => {
+        crate::session::$session_type::SessionManager
+    };
+}
+
+#[macro_export]
 macro_rules! sessions {
-    ([$($session:ty),+]) => { // fn sessions([*session_types])
+    ([$($session:tt),+]) => { // fn sessions([*session_types])
+        $( pub mod $session; )+
+
         $crate::scope!{($all:tt) => {
             #[macro_export]
             macro_rules! _dispatch_session {
@@ -157,7 +179,7 @@ macro_rules! sessions {
                     match $xdg_type {
                         // for T in session_types:
                         //     T::XDG_TYPE => function::<T>(*arguments)
-                        $( <$session>::XDG_TYPE => $function::<$session>($all($args)*), )+
+                        $( <session_type!($session)>::XDG_TYPE => $function::<session_type!($session)>($all($args)*), )+
                         //
                         other => anyhow::bail!("{other} is not a valid session type."),
                     }

@@ -1,10 +1,5 @@
-use serde::Deserialize;
-
-use crate::{
-    context::SessionContext,
-    define_env,
-    template::{self, FreedesktopMetadata},
-};
+use super::manager::prelude::*;
+use crate::define_env;
 
 define_env!("WAYLAND_DISPLAY", pub Display(String));
 
@@ -21,7 +16,7 @@ impl Default for SessionManager {
     }
 }
 
-impl template::SessionManager for SessionManager {
+impl manager::SessionManager for SessionManager {
     const XDG_TYPE: &str = "wayland";
     type Env = Display;
 

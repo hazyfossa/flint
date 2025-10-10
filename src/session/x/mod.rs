@@ -1,8 +1,6 @@
 mod auth;
 
 use anyhow::{Context, Result, anyhow};
-use auth::XAuthorityManager;
-use serde::Deserialize;
 
 use std::{
     ffi::OsString,
@@ -12,16 +10,16 @@ use std::{
     thread::{self, JoinHandle},
 };
 
+use super::{context::VtNumber, manager::prelude::*};
+
+use auth::{ClientAuthorityEnv, XAuthorityManager};
+
 use crate::{
-    context::SessionContext,
     environment::{Env, EnvValue},
-    template::{self, FreedesktopMetadata},
-    tty::VtNumber,
     utils::{
         fd::{CommandFdCtxExt, FdContext},
         misc::OsStringExt,
     },
-    x::auth::ClientAuthorityEnv,
 };
 
 static DEFAULT_XORG_PATH: &str = "/usr/lib/Xorg";
@@ -194,7 +192,7 @@ impl SessionManager {
     }
 }
 
-impl template::SessionManager for SessionManager {
+impl manager::SessionManager for SessionManager {
     const XDG_TYPE: &str = "x11";
 
     type Env = (Display, ClientAuthorityEnv, WindowPath);
