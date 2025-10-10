@@ -2,9 +2,9 @@
 
 mod encoding;
 use encoding::*;
+
 mod file;
 use file::*;
-mod lock;
 
 use std::{
     ffi::OsString,
@@ -92,11 +92,11 @@ impl XAuthorityManager {
     }
 
     pub fn setup_server(&self) -> Result<PathBuf> {
-        let authority = Authority::new(Some(vec![Entry::new(
+        let authority = [Entry::new(
             &self.cookie,
             Scope::Any,
             Target::Server { slot: 0 },
-        )]));
+        )];
 
         let path = self.directory.join("server-authority");
 
@@ -110,25 +110,25 @@ impl XAuthorityManager {
     }
 
     pub fn setup_client(&self, display: &Display) -> Result<ClientAuthorityEnv> {
-        let display_number = display.number().to_string();
-
         // TODO: add proper note why we do two entries
         // (legacy apps + hostname changes)
 
-        let authority = Authority::new(Some(vec![
+        let authority = [
             Entry::new(
                 &self.cookie,
                 Scope::Any,
                 Target::Client {
-                    display_number: display_number.clone(),
+                    display_number: display.number(),
                 },
             ),
             Entry::new(
                 &self.cookie,
                 Scope::Local(self.hostname.clone()),
-                Target::Client { display_number },
+                Target::Client {
+                    display_number: display.number(),
+                },
             ),
-        ]));
+        ];
 
         let path = self.directory.join("client-authority");
 

@@ -199,10 +199,6 @@ pub mod config {
         }
 
         fn from_file(path: PathBuf) -> Result<Self> {
-            if !path.is_file() {
-                return Ok(Self::default());
-            }
-
             let mut file = match File::open(&path) {
                 Err(e) if matches!(e.kind(), ErrorKind::NotFound) => return Ok(Self::default()),
                 other => other,

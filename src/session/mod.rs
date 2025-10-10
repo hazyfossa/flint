@@ -1,4 +1,4 @@
 pub mod context;
 pub mod manager;
 
-crate::sessions!([x, wayland, tty]);
+crate::sessions!([x11, wayland, tty]);
