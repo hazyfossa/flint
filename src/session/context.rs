@@ -1,6 +1,6 @@
 use anyhow::Result;
 
-use crate::environment::Env;
+use crate::environment::{Env, EnvContainer};
 
 crate::define_env!("XDG_VTNR", pub VtNumber(u8));
 crate::define_env!("XDG_SEAT", pub Seat(String));
@@ -16,7 +16,7 @@ pub struct SessionContext {
     pub vt: VtNumber,
     pub seat: Seat,
 
-    pub inherit_env: Env,
+    pub env: Env,
 }
 
 impl SessionContext {
@@ -24,7 +24,13 @@ impl SessionContext {
         Ok(Self {
             vt: env.pull()?,
             seat: env.ensure()?,
-            inherit_env: env,
+            env,
         })
+    }
+}
+
+impl EnvContainer for SessionContext {
+    fn apply(self, env: Env) -> Env {
+        env.merge(self.env)
     }
 }

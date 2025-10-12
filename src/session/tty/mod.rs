@@ -5,15 +5,15 @@ mod ioctl;
 use std::{
     io::IsTerminal,
     os::fd::{AsRawFd, FromRawFd, OwnedFd},
+    path::PathBuf,
     process::Command,
 };
 
-use anyhow::{Context, Result, bail};
+use anyhow::{Context, Result, anyhow, bail};
 use command_fds::{CommandFdExt, FdMapping};
 use rustix::fs::{Mode, OFlags};
 
 use super::manager::prelude::*;
-use crate::session::manager::SessionMetadataLookup;
 
 pub use crate::session::context::VtNumber;
 
@@ -82,30 +82,45 @@ impl VT {
 }
 
 #[derive(Default, Deserialize)]
-pub struct SessionManager {}
+pub struct SessionManager;
 
 impl manager::SessionManager for SessionManager {
     const XDG_TYPE: &str = "tty";
 
-    type Env = VtNumber;
+    type EnvDiff = VtNumber;
 
-    fn new_session(
-        self,
-        _metadata: manager::SessionMetadata,
+    fn setup_session(&self, context: SessionContext) -> Result<Self::EnvDiff> {
+        Ok(context.vt.clone())
+    }
+
+    fn spawn_session(
+        &self,
+        _executable: PathBuf,
         _context: SessionContext,
-    ) -> Result<std::process::ExitStatus> {
+    ) -> Result<std::process::Child> {
         todo!()
     }
 }
 
-impl SessionMetadataLookup for SessionManager {
-    fn lookup_metadata(_name: &str) -> Result<manager::SessionMetadata> {
-        // name here is an executable
-        todo!()
+impl metadata::SessionMetadataLookup for SessionManager {
+    fn lookup_metadata(_name: &str) -> Result<SessionMetadata> {
+        Err(anyhow!(
+            r#"Arbitrary executables are not supported as a tty session.
+            Create a new entry in the config."#
+        ))
     }
 
-    fn lookup_metadata_all() -> Vec<manager::SessionMetadata> {
-        // TODO: at least debian provides a list of shells
-        Vec::new()
+    fn lookup_metadata_all() -> SessionMap {
+        // NOTE: at least debian provides a list of valid shells
+
+        // This is a hack
+        SessionMap::new().update(
+            "_USER_SHELL".to_string(),
+            SessionMetadata {
+                name: "Shell".to_string(),
+                description: Some("Default shell as set for the target user".to_string()),
+                executable: PathBuf::from("_FILL_IN"),
+            },
+        )
     }
 }

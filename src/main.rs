@@ -8,7 +8,9 @@ use anyhow::{Context, Result, anyhow};
 
 use pico_args::Arguments;
 use session::{
-    context::SessionContext, dispatch_session, manager::SessionManager as GenericSessionManager,
+    context::SessionContext,
+    dispatch_session,
+    manager::{GenericSessionManager, SessionManager as AnySession},
 };
 
 use crate::utils::{
@@ -16,15 +18,19 @@ use crate::utils::{
     runtime_dir::{self, RuntimeDir},
 };
 
-fn list<Session: GenericSessionManager>() -> Result<()> {
-    for entry in Session::lookup_metadata_all() {
-        println!("{}", entry)
+fn list<Session: AnySession>(config: &Config) -> Result<()> {
+    let manager = GenericSessionManager::<Session>::new_from_config(config)?;
+
+    for (key, entry) in manager.lookup_metadata_all() {
+        println!("{key}: {entry}")
     }
 
     Ok(())
 }
 
-fn run<SessionManager: GenericSessionManager>(mut args: Arguments, config: Config) -> Result<()> {
+fn run<Session: AnySession>(config: &Config, mut args: Arguments) -> Result<()> {
+    let manager = GenericSessionManager::<Session>::new_from_config(config)?;
+
     let name: String = args.free_from_str().map_err(|_| {
         anyhow!(
             "
@@ -34,14 +40,14 @@ fn run<SessionManager: GenericSessionManager>(mut args: Arguments, config: Confi
         )
     })?;
 
-    let metadata = SessionManager::lookup_metadata(&name)?;
-    let manager = SessionManager::new_from_config(&config).context("Invalid session config")?;
-
+    let metadata = manager.lookup_metadata(&name)?;
     let context = SessionContext::from_env(environment::current())?;
 
-    let ret = manager
+    let mut child = manager
         .new_session(metadata, context)
         .context("Failed to start session")?;
+
+    let ret = child.wait()?;
 
     match ret.success() {
         true => Ok(()),
@@ -64,8 +70,8 @@ fn cli(subcommand: &str, mut args: Arguments, config: Config) -> Result<()> {
         .unwrap_or("x11".to_string());
 
     match subcommand {
-        "run" => dispatch_session!(session_type.as_str() => run(args, config)),
-        "list" => dispatch_session!(session_type.as_str() => list()),
+        "run" => dispatch_session!(session_type.as_str() => run(&config, args)),
+        "list" => dispatch_session!(session_type.as_str() => list(&config)),
         other => Err(anyhow!("Invalid subcommand: {other}")),
     }
 }

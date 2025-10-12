@@ -2,7 +2,6 @@ use std::{env, ffi::OsString, ops::Deref, process::Command};
 
 use anyhow::{Context, Result, anyhow};
 
-// TODO: benchmark
 use im::{HashMap, hashmap::Entry};
 
 pub trait EnvValue: Sized {
@@ -71,12 +70,6 @@ pub fn current() -> Env {
 }
 
 impl Env {
-    pub fn empty() -> Self {
-        Self {
-            state: HashMap::new(),
-        }
-    }
-
     pub fn from_values(values: impl IntoIterator<Item = (String, OsString)>) -> Self {
         Self {
             state: values.into_iter().collect(),
@@ -101,17 +94,13 @@ impl Env {
         E::deserialize(value).context("Variable exists, but contents are invalid")
     }
 
-    // This is an internal method
-    // Callers should use env.set() to set variables
-    // In the simplest case of one variable, set == bind
-    // For N variables set == N binds
-    fn bind<E: EnvValue>(self, var: E) -> Self {
+    pub fn set<E: EnvValue>(self, var: E) -> Self {
         Self {
             state: self.state.update(E::KEY.to_string(), var.serialize()),
         }
     }
 
-    pub fn set<E: EnvContainer>(self, container: E) -> Self {
+    pub fn merge<E: EnvContainer>(self, container: E) -> Self {
         container.apply(self)
     }
 
@@ -147,7 +136,7 @@ macro_rules! variadic_env_impl {
         {
             fn apply(self, env: Env) -> Env {
                 let ($($name,)+) = self;
-                $(let env = env.bind($name);)+
+                $(let env = env.set($name);)+
                 env
             }
         }
@@ -168,7 +157,7 @@ variadic_env_impl! { a b c d e f g h i j k l }
 
 impl<T: EnvValue> EnvContainer for T {
     fn apply(self, env: Env) -> Env {
-        env.bind(self)
+        env.set(self)
     }
 }
 

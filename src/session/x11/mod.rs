@@ -155,7 +155,7 @@ impl Default for SessionManager {
     }
 }
 
-impl FreedesktopMetadata for SessionManager {
+impl metadata::FreedesktopMetadata for SessionManager {
     const LOOKUP_PATH: &str = "/usr/share/xsessions";
 }
 
@@ -195,10 +195,10 @@ impl SessionManager {
 impl manager::SessionManager for SessionManager {
     const XDG_TYPE: &str = "x11";
 
-    type Env = (Display, ClientAuthorityEnv, WindowPath);
+    type EnvDiff = (Display, ClientAuthorityEnv, WindowPath);
 
-    fn setup_session(&self, context: SessionContext) -> Result<Self::Env> {
-        let env = &context.inherit_env;
+    fn setup_session(&self, context: SessionContext) -> Result<Self::EnvDiff> {
+        let env = &context.env;
         let window_path = WindowPath::previous_plus_vt(env, &context.vt)?;
 
         let authority_manager = XAuthorityManager::new(&context.vt, self.lock_authority)
