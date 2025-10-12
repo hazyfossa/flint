@@ -1,21 +1,21 @@
 #![allow(dead_code)] // TODO
 
-mod ioctl;
+mod control;
 
 use std::{
-    io::IsTerminal,
-    os::fd::{AsRawFd, FromRawFd, OwnedFd},
+    os::fd::{AsFd, AsRawFd, BorrowedFd, FromRawFd, OwnedFd},
     path::PathBuf,
     process::Command,
 };
 
-use anyhow::{Context, Result, anyhow, bail};
+use anyhow::{Context, Result, anyhow};
 use command_fds::{CommandFdExt, FdMapping};
 use rustix::fs::{Mode, OFlags};
 
 use super::manager::prelude::*;
 
 pub use crate::session::context::VtNumber;
+use crate::session::tty::control::VTAccessor;
 
 impl VtNumber {
     fn as_tty_string(&self) -> String {
@@ -23,43 +23,46 @@ impl VtNumber {
     }
 }
 
-unsafe fn clone_fd(fd: &OwnedFd) -> OwnedFd {
+unsafe fn clone_fd<'a>(fd: BorrowedFd<'a>) -> OwnedFd {
     unsafe { OwnedFd::from_raw_fd(fd.as_raw_fd()) }
 }
 
-pub struct VT {
-    descriptor: OwnedFd,
+pub struct ActiveVT {
+    settings: VTAccessor,
+    number: VtNumber,
 }
 
-impl VT {
-    pub fn open(number: VtNumber) -> Result<Self> {
-        let number = number.to_string();
+impl ActiveVT {
+    fn from_fd(fd: OwnedFd, number: Option<VtNumber>) -> Result<Self> {
+        let settings = VTAccessor::from_fd(fd)?;
 
+        let number = number.unwrap_or(
+            settings
+                .get_state()
+                .context("Failed to query active VT state to get the number")?
+                .active_number
+                .into(),
+        );
+
+        Ok(Self { settings, number })
+    }
+
+    pub fn open(number: VtNumber) -> Result<Self> {
         let fd = rustix::fs::open(
-            format!("/dev/tty{number}"),
+            format!("/dev/tty{}", number.to_string()),
             OFlags::RDWR | OFlags::NOCTTY,
             Mode::from_bits_truncate(0o666),
         )
-        .context(format!("Failed to open tty {number}"))?;
+        .context(format!("Failed to open tty {}", number.to_string()))?;
 
-        Self::from_fd(fd)
+        Self::from_fd(fd, Some(number))
     }
 
-    pub fn from_fd(fd: OwnedFd) -> Result<Self> {
-        if !fd.is_terminal() {
-            bail!("descriptor is not a terminal")
-        };
-        Ok(Self { descriptor: fd })
-    }
-
-    pub fn try_from_stdin() -> Option<Self> {
+    pub fn current(number: Option<VtNumber>) -> Result<Self> {
         // TODO: this means that self.descriptor will be closed on drop.
         // Is this appropriate for stdin?
         let stdin = unsafe { OwnedFd::from_raw_fd(0) };
-        match Self::from_fd(stdin) {
-            Ok(terminal) => Some(terminal),
-            Err(_) => None,
-        }
+        Self::from_fd(stdin, number)
     }
 
     pub fn bind<'a>(&self, command: &'a mut Command) -> Result<&'a mut Command> {
@@ -70,7 +73,7 @@ impl VT {
                 // TODO: safety
                 .map(|i| unsafe {
                     FdMapping {
-                        parent_fd: clone_fd(&self.descriptor),
+                        parent_fd: clone_fd(self.settings.as_fd()),
                         child_fd: *i,
                     }
                 })
@@ -81,20 +84,24 @@ impl VT {
     }
 }
 
-#[derive(Default, Deserialize)]
-pub struct SessionManager;
+pub struct Session;
 
-impl manager::SessionManager for SessionManager {
+#[derive(Default, Deserialize)]
+#[serde(default)]
+pub struct Config {}
+
+impl manager::SessionType for Session {
     const XDG_TYPE: &str = "tty";
 
+    type ManagerConfig = Config;
     type EnvDiff = VtNumber;
 
-    fn setup_session(&self, context: SessionContext) -> Result<Self::EnvDiff> {
+    fn setup_session(_config: &Config, context: SessionContext) -> Result<Self::EnvDiff> {
         Ok(context.vt.clone())
     }
 
     fn spawn_session(
-        &self,
+        _config: &Config,
         _executable: PathBuf,
         _context: SessionContext,
     ) -> Result<std::process::Child> {
@@ -102,7 +109,7 @@ impl manager::SessionManager for SessionManager {
     }
 }
 
-impl metadata::SessionMetadataLookup for SessionManager {
+impl metadata::SessionMetadataLookup for Session {
     fn lookup_metadata(_name: &str) -> Result<SessionMetadata> {
         Err(anyhow!(
             r#"Arbitrary executables are not supported as a tty session.
@@ -115,11 +122,11 @@ impl metadata::SessionMetadataLookup for SessionManager {
 
         // This is a hack
         SessionMap::new().update(
-            "_USER_SHELL".to_string(),
+            "shell".to_string(),
             SessionMetadata {
                 name: "Shell".to_string(),
                 description: Some("Default shell as set for the target user".to_string()),
-                executable: PathBuf::from("_FILL_IN"),
+                executable: PathBuf::from("<set_externally>"),
             },
         )
     }

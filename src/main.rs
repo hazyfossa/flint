@@ -1,5 +1,5 @@
 mod environment;
-mod login;
+mod pam;
 mod session;
 #[allow(dead_code)]
 mod utils;
@@ -10,16 +10,19 @@ use pico_args::Arguments;
 use session::{
     context::SessionContext,
     dispatch_session,
-    manager::{GenericSessionManager, SessionManager as AnySession},
+    manager::{SessionManager, SessionType},
 };
 
-use crate::utils::{
-    config::Config,
-    runtime_dir::{self, RuntimeDir},
+use crate::{
+    session::manager::SessionClass,
+    utils::{
+        config::Config,
+        runtime_dir::{self, RuntimeDir},
+    },
 };
 
-fn list<Session: AnySession>(config: &Config) -> Result<()> {
-    let manager = GenericSessionManager::<Session>::new_from_config(config)?;
+fn list<Session: SessionType>(config: &Config) -> Result<()> {
+    let manager = SessionManager::<Session>::new_from_config(config)?;
 
     for (key, entry) in manager.lookup_metadata_all() {
         println!("{key}: {entry}")
@@ -28,8 +31,8 @@ fn list<Session: AnySession>(config: &Config) -> Result<()> {
     Ok(())
 }
 
-fn run<Session: AnySession>(config: &Config, mut args: Arguments) -> Result<()> {
-    let manager = GenericSessionManager::<Session>::new_from_config(config)?;
+fn run<Session: SessionType>(config: &Config, mut args: Arguments) -> Result<()> {
+    let manager = SessionManager::<Session>::new_from_config(config)?;
 
     let name: String = args.free_from_str().map_err(|_| {
         anyhow!(
@@ -40,11 +43,17 @@ fn run<Session: AnySession>(config: &Config, mut args: Arguments) -> Result<()> 
         )
     })?;
 
-    let metadata = manager.lookup_metadata(&name)?;
     let context = SessionContext::from_env(environment::current())?;
 
     let mut child = manager
-        .new_session(metadata, context)
+        .new_session(
+            &name,
+            context,
+            SessionClass::User {
+                early: false,
+                light: false,
+            },
+        )
         .context("Failed to start session")?;
 
     let ret = child.wait()?;

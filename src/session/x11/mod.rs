@@ -5,7 +5,7 @@ use anyhow::{Context, Result, anyhow};
 use std::{
     ffi::OsString,
     io::{BufRead, BufReader, PipeReader, pipe},
-    path::PathBuf,
+    path::{Path, PathBuf},
     process::{self, Child, Command, Stdio},
     thread::{self, JoinHandle},
 };
@@ -139,14 +139,20 @@ impl XWatcher {
     }
 }
 
+pub struct Session;
+
+impl metadata::FreedesktopMetadata for Session {
+    const LOOKUP_PATH: &str = "/usr/share/xsessions";
+}
+
 #[derive(Deserialize)]
 #[serde(default)]
-pub struct SessionManager {
+pub struct Config {
     xorg_path: PathBuf,
     lock_authority: bool,
 }
 
-impl Default for SessionManager {
+impl Default for Config {
     fn default() -> Self {
         Self {
             xorg_path: PathBuf::from(DEFAULT_XORG_PATH),
@@ -155,60 +161,55 @@ impl Default for SessionManager {
     }
 }
 
-impl metadata::FreedesktopMetadata for SessionManager {
-    const LOOKUP_PATH: &str = "/usr/share/xsessions";
+fn spawn_server(
+    path: &Path,
+    authority: PathBuf,
+    context: SessionContext,
+) -> Result<(DisplayReceiver, Child)> {
+    let mut fd_ctx = FdContext::new(3..5);
+
+    let mut xorg_path = Command::new(path);
+
+    // TODO: this is flaky. Unsetting env causes strange behaviour.
+    // Ensure that Xorg always starts non-elevated or bypass Xorg.wrap entirely
+    let command = xorg_path
+        .arg(format!("vt{}", context.vt.to_string()))
+        .args(["-seat".into(), context.seat.serialize()])
+        .args(["-auth".into(), authority.into_os_string()])
+        .args(["-nolisten", "tcp"])
+        .args(["-background", "none", "-noreset", "-keeptty", "-novtswitch"])
+        .args(["-verbose", "3", "-logfile", "/dev/null"])
+        .envs([("XORG_RUN_AS_USER_OK", "1")]); // TODO: relevant?
+
+    let (display_rx, command) = DisplayReceiver::setup(&mut fd_ctx, command)?;
+
+    let process = command
+        .with_fd_context(fd_ctx)
+        .stderr(Stdio::piped())
+        .spawn()
+        .context("Failed to spawn X server subprocess")?;
+
+    Ok((display_rx, process))
 }
 
-impl SessionManager {
-    fn spawn_server(
-        &self,
-        authority: PathBuf,
-        context: SessionContext,
-    ) -> Result<(DisplayReceiver, Child)> {
-        let mut fd_ctx = FdContext::new(3..5);
-
-        let mut xorg_path = Command::new(&self.xorg_path);
-
-        // TODO: this is flaky. Unsetting env causes strange behaviour.
-        // Ensure that Xorg always starts non-elevated or bypass Xorg.wrap entirely
-        let command = xorg_path
-            .arg(format!("vt{}", context.vt.to_string()))
-            .args(["-seat".into(), context.seat.serialize()])
-            .args(["-auth".into(), authority.into_os_string()])
-            .args(["-nolisten", "tcp"])
-            .args(["-background", "none", "-noreset", "-keeptty", "-novtswitch"])
-            .args(["-verbose", "3", "-logfile", "/dev/null"])
-            .envs([("XORG_RUN_AS_USER_OK", "1")]); // TODO: relevant?
-
-        let (display_rx, command) = DisplayReceiver::setup(&mut fd_ctx, command)?;
-
-        let process = command
-            .with_fd_context(fd_ctx)
-            .stderr(Stdio::piped())
-            .spawn()
-            .context("Failed to spawn X server subprocess")?;
-
-        Ok((display_rx, process))
-    }
-}
-
-impl manager::SessionManager for SessionManager {
+impl manager::SessionType for Session {
     const XDG_TYPE: &str = "x11";
 
+    type ManagerConfig = Config;
     type EnvDiff = (Display, ClientAuthorityEnv, WindowPath);
 
-    fn setup_session(&self, context: SessionContext) -> Result<Self::EnvDiff> {
+    fn setup_session(config: &Config, context: SessionContext) -> Result<Self::EnvDiff> {
         let env = &context.env;
         let window_path = WindowPath::previous_plus_vt(env, &context.vt)?;
 
-        let authority_manager = XAuthorityManager::new(&context.vt, self.lock_authority)
+        let authority_manager = XAuthorityManager::new(&context.vt, config.lock_authority)
             .context("Failed to setup authority manager")?;
 
         let server_authority = authority_manager
             .setup_server()
             .context("Failed to define server authority")?;
 
-        let (future_display, process) = self.spawn_server(server_authority, context)?;
+        let (future_display, process) = spawn_server(&config.xorg_path, server_authority, context)?;
         XWatcher { process }.start_thread()?; // TODO: requires changes to trait
 
         // NOTE: this will block until the X server is ready

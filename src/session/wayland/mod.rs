@@ -3,24 +3,29 @@ use crate::define_env;
 
 define_env!("WAYLAND_DISPLAY", pub Display(String));
 
-impl metadata::FreedesktopMetadata for SessionManager {
+pub struct Session;
+
+impl metadata::FreedesktopMetadata for Session {
     const LOOKUP_PATH: &str = "/usr/share/wayland-sessions/";
 }
 
 #[derive(Deserialize)]
-pub struct SessionManager;
+#[serde(default)]
+pub struct Config {}
 
-impl Default for SessionManager {
+impl Default for Config {
     fn default() -> Self {
         Self {}
     }
 }
 
-impl manager::SessionManager for SessionManager {
+impl manager::SessionType for Session {
     const XDG_TYPE: &str = "wayland";
+
+    type ManagerConfig = Config;
     type EnvDiff = Display;
 
-    fn setup_session(&self, _context: SessionContext) -> anyhow::Result<Self::EnvDiff> {
+    fn setup_session(_config: &Config, _context: SessionContext) -> anyhow::Result<Self::EnvDiff> {
         todo!()
     }
 }

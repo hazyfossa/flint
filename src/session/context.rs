@@ -2,7 +2,14 @@ use anyhow::Result;
 
 use crate::environment::{Env, EnvContainer};
 
-crate::define_env!("XDG_VTNR", pub VtNumber(u8));
+crate::define_env!("XDG_VTNR", pub VtNumber(u16));
+
+impl From<u16> for VtNumber {
+    fn from(value: u16) -> Self {
+        Self(value)
+    }
+}
+
 crate::define_env!("XDG_SEAT", pub Seat(String));
 
 impl Default for Seat {
