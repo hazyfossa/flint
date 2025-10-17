@@ -8,7 +8,7 @@ use std::{
 
 use super::{context::SessionContext, metadata::SessionMetadataLookup};
 use crate::{
-    environment::{EnvContainer, EnvRecipient, EnvValue},
+    environment::{EnvContainer, EnvRecipient, prelude::*},
     session::metadata::{SessionMap, SessionMetadata},
     utils::{config::Config, misc::OsStringExt},
 };
@@ -22,11 +22,13 @@ pub mod prelude {
     pub use serde::Deserialize;
 }
 
-crate::define_env!("XDG_SESSION_DESKTOP", SessionNameEnv(String));
-crate::define_env!("XDG_SESSION_TYPE", SessionTypeEnv(String));
+define_env!("XDG_SESSION_DESKTOP", SessionNameEnv(String));
+env_parser_auto!(SessionNameEnv);
+define_env!("XDG_SESSION_TYPE", SessionTypeEnv(String));
+env_parser_auto!(SessionTypeEnv);
 
 // TODO: investigate how this can contain more than one name
-struct SessionCompositionEnv(Vec<String>);
+define_env!("XDG_CURRENT_DESKTOP", SessionCompositionEnv(Vec<String>));
 
 impl SessionCompositionEnv {
     fn simple(name: String) -> Self {
@@ -34,9 +36,7 @@ impl SessionCompositionEnv {
     }
 }
 
-impl EnvValue for SessionCompositionEnv {
-    const KEY: &str = "XDG_CURRENT_DESKTOP";
-
+impl EnvParser for SessionCompositionEnv {
     fn serialize(self) -> std::ffi::OsString {
         self.0.join(";").into()
     }
@@ -60,9 +60,9 @@ pub enum SessionClass {
     LockScreen,
 }
 
-impl EnvValue for SessionClass {
-    const KEY: &str = "XDG_SESSION_CLASS";
+impl_env!("XDG_SESSION_CLASS", SessionClass);
 
+impl EnvParser for SessionClass {
     fn serialize(self) -> std::ffi::OsString {
         match self {
             Self::User { early, light } => {

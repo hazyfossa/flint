@@ -1,25 +1,28 @@
 use std::{env, ffi::OsString, ops::Deref, process::Command};
 
 use anyhow::{Context, Result, anyhow};
+use im::HashMap;
 
-use im::{HashMap, hashmap::Entry};
+pub mod prelude {
+    pub use super::{Env, EnvParser, EnvVar};
+    pub use crate::{define_env, env_parser_auto, env_parser_raw, impl_env};
+    pub use std::ops::Deref;
+}
 
-pub trait EnvValue: Sized {
+pub trait EnvVar: Sized + EnvParser {
     const KEY: &str;
+    type Bind<T>;
+}
 
+pub trait EnvParser: Sized {
     fn serialize(self) -> OsString;
     fn deserialize(value: OsString) -> Result<Self>;
 }
 
 #[macro_export]
-macro_rules! define_env {
-    ($key:expr, $vis:vis $struct_name:ident($inner:ty)) => {
-        #[derive(Debug, Clone)] // TODO: custom debug, ponder on clone
-        $vis struct $struct_name($inner);
-
-        impl $crate::environment::EnvValue for $struct_name {
-            const KEY: &str = $key;
-
+macro_rules! env_parser_auto {
+    ($target:ident) => {
+        impl EnvParser for $target {
             #[inline]
             fn serialize(self) -> std::ffi::OsString {
                 self.0.to_string().into()
@@ -31,12 +34,65 @@ macro_rules! define_env {
                 Ok(Self(value.try_to_string()?.parse()?))
             }
         }
+    };
+}
 
-        impl std::ops::Deref for $struct_name {
-            type Target = $inner;
+#[macro_export]
+macro_rules! env_parser_raw {
+    ($target:ident) => {
+        impl EnvParser for $target {
+            #[inline]
+            fn serialize(self) -> std::ffi::OsString {
+                self.0
+            }
 
-            fn deref(&self) -> &Self::Target {
-                &self.0
+            #[inline]
+            fn deserialize(value: std::ffi::OsString) -> anyhow::Result<Self> {
+                Ok(Self(value))
+            }
+        }
+    };
+}
+
+#[macro_export]
+macro_rules! define_env {
+    ($key:expr, $vis:vis $struct_name:ident($inner:ty)) => {
+        $vis struct $struct_name($inner);
+        impl_env!($key, $struct_name);
+    };
+}
+
+// TODO
+// This is kinda right yet wrong
+// Instead of this gruesome deref nesting
+// Build accessor.key pseudo structs and autogenerate a method to pull from env
+
+#[macro_export]
+macro_rules! impl_env {
+    ($key:expr, $target:ident) => {
+        paste::paste! {
+            impl EnvVar for $target {
+                const KEY: &str = $key;
+                type Bind<T> = [<EnvWith $target>]<T>;
+            }
+
+
+            pub struct [<EnvWith $target>] <T> {
+                inner: T,
+                // TODO: remove _ if we decide to proceed with this
+                [<_ $target:snake>]: $target
+            }
+
+
+
+            impl<T> Deref for [<EnvWith $target>]<T>
+            where
+                T: Deref<Target = Env>
+            {
+                type Target = T;
+                fn deref(&self) -> &Self::Target {
+                    &self.inner
+                }
             }
         }
     };
@@ -76,14 +132,14 @@ impl Env {
         }
     }
 
-    pub fn peek<E: EnvValue>(&self) -> Result<Option<PeekEnv<E>>> {
+    pub fn peek<E: EnvVar>(&self) -> Result<Option<PeekEnv<E>>> {
         match self.state.get(E::KEY) {
             None => Ok(None),
             Some(value) => Ok(Some(PeekEnv(E::deserialize(value.clone())?))),
         }
     }
 
-    pub fn pull<E: EnvValue>(&mut self) -> Result<E> {
+    pub fn pull<E: EnvVar>(&mut self) -> Result<E> {
         let (value, state) = self
             .state
             .extract(E::KEY)
@@ -91,10 +147,13 @@ impl Env {
 
         self.state = state;
 
-        E::deserialize(value).context("Variable exists, but contents are invalid")
+        E::deserialize(value).context(format!(
+            "Variable {} exists, but contents are invalid",
+            E::KEY
+        ))
     }
 
-    pub fn set<E: EnvValue>(self, var: E) -> Self {
+    pub fn set<E: EnvVar>(self, var: E) -> Self {
         Self {
             state: self.state.update(E::KEY.to_string(), var.serialize()),
         }
@@ -102,15 +161,6 @@ impl Env {
 
     pub fn merge<E: EnvContainer>(self, container: E) -> Self {
         container.apply(self)
-    }
-
-    pub fn ensure<E: EnvValue + Default>(&mut self) -> Result<E> {
-        let value = match self.state.entry(E::KEY.to_string()) {
-            Entry::Occupied(entry) => entry.get().clone(),
-            Entry::Vacant(entry) => entry.insert(E::default().serialize()).clone(),
-        };
-
-        E::deserialize(value)
     }
 }
 
@@ -129,33 +179,38 @@ pub trait EnvContainer {
     fn apply(self, env: Env) -> Env;
 }
 
-macro_rules! variadic_env_impl {
-    ( $( $name:ident )+ ) => {
-        #[allow(non_camel_case_types)]
-        impl<$($name: EnvValue),+> EnvContainer for ($($name,)+)
-        {
-            fn apply(self, env: Env) -> Env {
-                let ($($name,)+) = self;
-                $(let env = env.set($name);)+
-                env
+#[rustfmt::skip]
+mod env_container_variadics {
+    use super::*;
+
+    macro_rules! var_impl {
+        ( $( $name:ident )+ ) => {
+            #[allow(non_camel_case_types)]
+            impl<$($name: EnvVar),+> EnvContainer for ($($name,)+)
+            {
+                fn apply(self, env: Env) -> Env {
+                    let ($($name,)+) = self;
+                    $(let env = env.set($name);)+
+                    env
+                }
             }
-        }
-    };
+        };
+    }
+
+    var_impl!           { a b }
+    var_impl!          { a b c }
+    var_impl!         { a b c d }
+    var_impl!        { a b c d e }
+    var_impl!       { a b c d e f }
+    var_impl!      { a b c d e f g }
+    var_impl!     { a b c d e f g h }
+    var_impl!    { a b c d e f g h i }
+    var_impl!   { a b c d e f g h i j }
+    var_impl!  { a b c d e f g h i j k }
+    var_impl! { a b c d e f g h i j k l }
 }
 
-variadic_env_impl! { a b }
-variadic_env_impl! { a b c }
-variadic_env_impl! { a b c d }
-variadic_env_impl! { a b c d e }
-variadic_env_impl! { a b c d e f }
-variadic_env_impl! { a b c d e f g }
-variadic_env_impl! { a b c d e f g h }
-variadic_env_impl! { a b c d e f g h i }
-variadic_env_impl! { a b c d e f g h i j }
-variadic_env_impl! { a b c d e f g h i j k }
-variadic_env_impl! { a b c d e f g h i j k l }
-
-impl<T: EnvValue> EnvContainer for T {
+impl<T: EnvVar> EnvContainer for T {
     fn apply(self, env: Env) -> Env {
         env.set(self)
     }

@@ -89,13 +89,12 @@ fn main() -> Result<()> {
     let xdg_context = xdg::BaseDirectories::new();
 
     runtime_dir::current.init(
-        RuntimeDir::create(&xdg_context, "troglodyt")
-            .context("Failed to create runtime directory")?,
+        RuntimeDir::create(&xdg_context, "flint").context("Failed to create runtime directory")?,
     )?;
 
     let mut args = Arguments::from_env();
 
-    let config = Config::from_args(&mut args, "/etc/troglodyt.toml")?;
+    let config = Config::from_args(&mut args, "/etc/flint.toml")?;
 
     match args.subcommand()? {
         Some(ref subcommand) => cli(subcommand, args, config),

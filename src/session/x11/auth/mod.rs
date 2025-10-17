@@ -23,21 +23,11 @@ use rustix::{
 
 use super::Display;
 
-use crate::{environment::EnvValue, session::context::VtNumber, utils::runtime_dir};
+use crate::{environment::prelude::*, session::context::VtNumber, utils::runtime_dir};
 
-pub struct ClientAuthorityEnv(OsString);
-
-impl EnvValue for ClientAuthorityEnv {
-    const KEY: &str = "XAUTHORITY";
-
-    fn serialize(self) -> OsString {
-        self.0
-    }
-
-    fn deserialize(value: OsString) -> Result<Self> {
-        Ok(Self(value))
-    }
-}
+// TODO: raw mode
+define_env!("XAUTHORITY", pub ClientAuthorityEnv(OsString));
+env_parser_raw!(ClientAuthorityEnv);
 
 fn make_cookie() -> Result<Cookie> {
     let mut cookie_buf = [0u8; Cookie::BYTES_LEN];
@@ -70,7 +60,10 @@ impl XAuthorityManager {
 
         // TODO: what to do with dir on Xorg exit?
 
-        DirBuilder::new().mode(0o700).create(&directory)?;
+        DirBuilder::new()
+            .mode(0o700)
+            .create(&directory)
+            .context(format!("cannot create path: {directory:?}"))?;
 
         Ok(Self {
             lock,

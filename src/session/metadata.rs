@@ -17,7 +17,7 @@ pub type SessionMap = HashMap<SessionTypeID, SessionMetadata>;
 #[derive(Clone, Deserialize)]
 pub struct SessionMetadata {
     /// This is the "display" name
-    /// It may be different from the SessionTypeID
+    /// If it is unset, SessionTypeID should be used instead
     pub name: String,
     pub description: Option<String>,
     pub executable: PathBuf,
@@ -63,8 +63,8 @@ fn parse_freedesktop_file(file: &mut File) -> Result<SessionMetadata> {
 }
 
 impl<T: FreedesktopMetadata> SessionMetadataLookup for T {
-    fn lookup_metadata(name: &str) -> Result<SessionMetadata> {
-        let path = PathBuf::from(Self::LOOKUP_PATH).join(format!("{name}.desktop"));
+    fn lookup_metadata(id: &str) -> Result<SessionMetadata> {
+        let path = PathBuf::from(Self::LOOKUP_PATH).join(format!("{id}.desktop"));
 
         let mut file = File::open(path).map_err(|e| match e.kind() {
             ErrorKind::NotFound => anyhow!("Such a session is not defined"),
@@ -92,7 +92,14 @@ impl<T: FreedesktopMetadata> SessionMetadataLookup for T {
         }
 
         fn with_filename(file: File) -> Option<(String, File)> {
-            Some((file.path().file_name()?.to_str()?.to_string(), file))
+            Some((
+                file.path()
+                    .file_name()?
+                    .to_str()?
+                    .strip_suffix(".desktop")?
+                    .to_string(),
+                file,
+            ))
         }
 
         dir.filter_map(files)

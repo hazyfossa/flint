@@ -15,7 +15,7 @@ use super::{context::VtNumber, manager::prelude::*};
 use auth::{ClientAuthorityEnv, XAuthorityManager};
 
 use crate::{
-    environment::{Env, EnvValue},
+    environment::prelude::*,
     utils::{
         fd::{CommandFdCtxExt, FdContext},
         misc::OsStringExt,
@@ -24,7 +24,7 @@ use crate::{
 
 static DEFAULT_XORG_PATH: &str = "/usr/lib/Xorg";
 
-pub struct Display(u8);
+define_env!("DISPLAY", pub Display(u8));
 
 impl Display {
     pub fn new(number: u8) -> Self {
@@ -36,9 +36,7 @@ impl Display {
     }
 }
 
-impl EnvValue for Display {
-    const KEY: &str = "DISPLAY";
-
+impl EnvParser for Display {
     fn serialize(self) -> OsString {
         format!(":{}", self.0).into()
     }
@@ -92,7 +90,8 @@ impl DisplayReceiver {
     }
 }
 
-crate::define_env!("WINDOWPATH", pub WindowPath(String));
+define_env!("WINDOWPATH", pub WindowPath(String));
+env_parser_auto!(WindowPath);
 
 impl WindowPath {
     fn previous_plus_vt(env: &Env, vt: &VtNumber) -> Result<Self> {

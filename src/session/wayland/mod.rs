@@ -1,7 +1,8 @@
 use super::manager::prelude::*;
-use crate::define_env;
+use crate::environment::prelude::*;
 
 define_env!("WAYLAND_DISPLAY", pub Display(String));
+env_parser_auto!(Display);
 
 pub struct Session;
 
