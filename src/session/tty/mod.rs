@@ -38,7 +38,7 @@ impl ActiveVT {
 
         let number = number.unwrap_or(
             settings
-                .get_state()
+                .get_common_state()
                 .context("Failed to query active VT state to get the number")?
                 .active_number
                 .into(),

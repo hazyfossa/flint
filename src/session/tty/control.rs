@@ -28,32 +28,33 @@ impl AsFd for VTAccessor {
 macro_rules! vt_property {
     (
         $model:ty,
-        $getter_name:ident = $opcode_get:expr
-        $(, $setter_name:ident = $opcode_set:expr)?
+        get = $opcode_get:expr
+        $(, set = $opcode_set:expr)?
     ) => {
+        paste::paste! {
         impl VTAccessor {
-            pub fn $getter_name(&self) -> io::Result<$model> {
+            pub fn [<get_ $model:snake>](&self) -> io::Result<$model> {
                 unsafe { ioctl::ioctl(&self.0, ioctl::Getter::<$opcode_get, $model>::new()) }
             }
 
-            $(pub fn $setter_name(&self, value: $model) -> io::Result<()> {
+            $(pub fn [<set_ $model:snake>](&self, value: $model) -> io::Result<()> {
                 unsafe { ioctl::ioctl(&self.0, ioctl::Setter::<$opcode_set, $model>::new(value)) }
             })?
         }
-    };
+    }};
 }
 
 // State
 
 #[allow(dead_code)]
 #[repr(C)]
-pub struct VtState {
+pub struct CommonState {
     pub active_number: u16,
     pub signal: u16,
     pub state: u16,
 }
 
-vt_property!(VtState, get_state = 0x5603);
+vt_property!(CommonState, get = 0x5603);
 
 // Render mode
 
@@ -63,11 +64,7 @@ pub enum RenderMode {
     Graphics = 1,
 }
 
-vt_property!(
-    RenderMode,
-    get_render_mode = 0x4B3B,
-    set_render_mode = 0x4B3A
-);
+vt_property!(RenderMode, get = 0x4B3B, set = 0x4B3A);
 
 // Keyboard
 
@@ -81,11 +78,7 @@ pub enum KeyboardMode {
     Unicode = 3,
 }
 
-vt_property!(
-    KeyboardMode,
-    get_keyboard_mode = 0x4B44,
-    set_keybaord_mode = 0x4B45
-);
+vt_property!(KeyboardMode, get = 0x4B44, set = 0x4B45);
 
 // VT Mode
 
