@@ -1,10 +1,11 @@
 #![allow(dead_code)]
 mod converse;
+mod types;
 pub use converse::PamDisplay;
 
 use anyhow::{Result, anyhow, bail};
 use libc::c_void;
-use pam_sys::{PamConversation, PamFlag, PamHandle, PamItemType, PamReturnCode};
+use pam_sys::{PamConversation, PamHandle, PamItemType, PamReturnCode};
 
 use std::{
     ffi::{CStr, CString},
@@ -12,19 +13,29 @@ use std::{
     ptr,
 };
 
-use crate::environment::{Env, EnvRecipient};
+use crate::{
+    environment::{Env, EnvRecipient},
+    pam::types::{CredentialsOP, FlagsBuilder, flags},
+};
 
 pub struct PAM<'a> {
     handle: &'a mut PamHandle,
     last_code: PamReturnCode,
 
     _conversation: PamConversation,
+
+    silent: bool,
 }
 
-// TODO: simplify the most common case of immediate return (of ret)
+// NOTE: we are using the raw api, since the flag definitions in pam_sys::wrapped are too inflexible
+// (and some stuff is broken)
+// TODO: consider upstreaming?
 macro_rules! pam_call {
     (let $ret:ident = $self:ident.$method:ident( $($args:tt)* )) => {
-        let code = pam_sys::$method($self.handle, $($args)* );
+        let code = PamReturnCode::from(
+            unsafe { pam_sys::raw::$method($self.handle, $($args)* ) }
+        );
+
         let $ret = $self.handle_ret(code, stringify!($method));
     };
 }
@@ -34,6 +45,10 @@ impl PAM<'_> {
         service_name: &str,
         display: impl PamDisplay,
         single_user: Option<&str>,
+
+        // NOTE: i did not find any reason for this flag to be configurable per-call
+        // however, that can trivially be done
+        silent: bool,
     ) -> Result<Self> {
         let handle: *mut PamHandle = ptr::null_mut();
 
@@ -42,10 +57,12 @@ impl PAM<'_> {
         match pam_sys::start(service_name, single_user, &conversation, handle as _) {
             PamReturnCode::SUCCESS => Ok(Self {
                 _conversation: conversation,
+
                 // Safety: PAM is expected to fill the handle after we call start
                 handle: unsafe { &mut *handle },
 
                 last_code: PamReturnCode::SUCCESS,
+                silent,
             }),
             err => bail!(err),
         }
@@ -59,52 +76,62 @@ impl PAM<'_> {
         }
     }
 
-    pub fn authenticate(&mut self, flags: PamFlag) -> Result<()> {
-        pam_call!(let ret = self.authenticate(flags));
+    pub fn authenticate(&mut self, require_auth_token: bool) -> Result<()> {
+        let flags = FlagsBuilder::new()
+            .set_if(self.silent, flags::SILENT)
+            .set_if(require_auth_token, flags::DISALLOW_NULL_AUTHTOK)
+            .finish();
+
+        pam_call!(let ret = self.pam_authenticate(flags));
         ret
     }
 
-    pub fn acct_mgmt(&mut self, flags: PamFlag) -> Result<()> {
-        pam_call!(let ret = self.acct_mgmt(flags));
+    pub fn acct_mgmt(&mut self, require_auth_token: bool) -> Result<()> {
+        let flags = FlagsBuilder::new()
+            .set_if(self.silent, flags::SILENT)
+            .set_if(require_auth_token, flags::DISALLOW_NULL_AUTHTOK)
+            .finish();
+
+        pam_call!(let ret = self.pam_acct_mgmt(flags));
         ret
     }
 
-    pub fn setcred(&mut self, flags: PamFlag) -> Result<()> {
-        pam_call!(let ret = self.setcred(flags));
+    pub fn credentials(&mut self, op: CredentialsOP) -> Result<()> {
+        let flags = FlagsBuilder::from(op.into())
+            .set_if(self.silent, flags::SILENT)
+            .finish();
+
+        pam_call!(let ret = self.pam_setcred(flags));
         ret
     }
 
-    pub fn open_session(&mut self, flags: PamFlag) -> Result<()> {
-        pam_call!(let ret = self.open_session(flags));
+    pub fn open_session(&mut self) -> Result<()> {
+        let flags = FlagsBuilder::new()
+            .set_if(self.silent, flags::SILENT)
+            .finish();
+
+        pam_call!(let ret = self.pam_open_session(flags));
         ret
     }
 
-    pub fn close_session(&mut self, flags: PamFlag) -> Result<()> {
-        pam_call!(let ret = self.close_session(flags));
-        ret
-    }
+    pub fn close_session(&mut self) -> Result<()> {
+        let flags = FlagsBuilder::new()
+            .set_if(self.silent, flags::SILENT)
+            .finish();
 
-    pub fn putenv(&mut self, kv_pair: &str) -> Result<()> {
-        pam_call!(let ret = self.putenv(kv_pair));
+        pam_call!(let ret = self.pam_close_session(flags));
         ret
     }
 
     pub fn set_item(&mut self, item: PamItemType, value: &str) -> Result<()> {
         let s = CString::new(value).unwrap();
-        self.last_code = PamReturnCode::from(unsafe {
-            // pam_set_item is exposed in a weird way in pam_sys::wrapped, so
-            // we use the raw version here instead
-            pam_sys::raw::pam_set_item(self.handle, item as i32, s.as_ptr() as *const c_void)
-        });
-        match self.last_code {
-            PamReturnCode::SUCCESS => Ok(()),
-            err => Err(anyhow!("pam error at `set_item`: {err}")),
-        }
+        pam_call!(let ret = self.pam_set_item(item as i32, s.as_ptr() as *const c_void));
+        ret
     }
 
     pub fn get_user(&mut self) -> Result<String> {
         let mut p: *const c_char = ptr::null_mut();
-        pam_call!(let ret = self.get_user(&mut p, ptr::null()));
+        pam_call!(let ret = self.pam_get_user(&mut p, ptr::null()));
         ret.map(|_| (unsafe { CStr::from_ptr(p) }).to_str().unwrap().to_string())
     }
 
@@ -118,7 +145,7 @@ impl PAM<'_> {
 
 impl Drop for PAM<'_> {
     fn drop(&mut self) {
-        pam_call!(let _whatever = self.end(self.last_code));
+        pam_call!(let _whatever = self.pam_end(self.last_code as i32));
     }
 }
 
@@ -139,13 +166,7 @@ impl EnvRecipient for PAM<'_> {
             .chain(Some(ptr::null()))
             .collect();
 
-        let ret = unsafe {
-            From::from(pam_sys::raw::pam_misc_paste_env(
-                self.handle as _,
-                env_ptrs.as_ptr(),
-            ))
-        };
-
-        self.handle_ret(ret, "set_env")
+        pam_call!(let ret = self.pam_misc_paste_env(env_ptrs.as_ptr()));
+        ret
     }
 }
