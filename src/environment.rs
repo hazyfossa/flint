@@ -162,16 +162,31 @@ impl Env {
     pub fn merge<E: EnvContainer>(self, container: E) -> Self {
         container.apply(self)
     }
+
+    pub fn to_vec(&self) -> Vec<OsString> {
+        self.state
+            .iter()
+            .map(|pair| {
+                let mut merged = OsString::new();
+
+                merged.push(pair.0);
+                merged.push("=");
+                merged.push(pair.1);
+
+                merged
+            })
+            .collect()
+    }
 }
 
 pub trait EnvRecipient {
-    fn set_env(&mut self, ctx: Env) -> &mut Self;
+    fn set_env(&mut self, env: Env) -> Result<()>;
 }
 
 impl EnvRecipient for Command {
-    fn set_env(&mut self, ctx: Env) -> &mut Self {
-        self.env_clear().envs(ctx.state);
-        self
+    fn set_env(&mut self, env: Env) -> Result<()> {
+        self.env_clear().envs(env.state);
+        Ok(())
     }
 }
 

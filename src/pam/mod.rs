@@ -8,11 +8,11 @@ use pam_sys::{PamConversation, PamFlag, PamHandle, PamItemType, PamReturnCode};
 
 use std::{
     ffi::{CStr, CString},
-    os::raw::c_char,
+    os::{raw::c_char, unix::ffi::OsStringExt},
     ptr,
 };
 
-use crate::environment::Env;
+use crate::environment::{Env, EnvRecipient};
 
 pub struct PAM<'a> {
     handle: &'a mut PamHandle,
@@ -24,12 +24,8 @@ pub struct PAM<'a> {
 // TODO: simplify the most common case of immediate return (of ret)
 macro_rules! pam_call {
     (let $ret:ident = $self:ident.$method:ident( $($args:tt)* )) => {
-        $self.last_code = pam_sys::$method($self.handle, $($args)* );
-
-        let $ret = match $self.last_code {
-            PamReturnCode::SUCCESS => Ok(()),
-            err => Err(anyhow!("pam error at `{}`: {err}", stringify!($method))),
-        };
+        let code = pam_sys::$method($self.handle, $($args)* );
+        let $ret = $self.handle_ret(code, stringify!($method));
     };
 }
 
@@ -52,6 +48,14 @@ impl PAM<'_> {
                 last_code: PamReturnCode::SUCCESS,
             }),
             err => bail!(err),
+        }
+    }
+
+    fn handle_ret(&mut self, ret: PamReturnCode, fn_name: &str) -> Result<()> {
+        self.last_code = ret;
+        match self.last_code {
+            PamReturnCode::SUCCESS => Ok(()),
+            err => Err(anyhow!("pam error at `{fn_name}`: {err}")),
         }
     }
 
@@ -105,11 +109,43 @@ impl PAM<'_> {
     }
 
     pub fn get_env(&mut self) -> Result<Env> {
+        // NOTE: we will need to either discard everything non-unicode
+        // or write a custom parser on a CStr
+        // or find a lossless way from CStr to OsStr and copy the one from std
         todo!()
     }
+}
 
-    pub fn end(&mut self) -> Result<()> {
-        pam_call!(let ret = self.end(self.last_code));
-        ret
+impl Drop for PAM<'_> {
+    fn drop(&mut self) {
+        pam_call!(let _whatever = self.end(self.last_code));
+    }
+}
+
+impl EnvRecipient for PAM<'_> {
+    fn set_env(&mut self, env: Env) -> Result<()> {
+        // NOTE: misc_paste_env in pam_sys is constrained to unicode (UTF-8)
+        // while our Env is not
+
+        let env_vec: Vec<_> = env
+            .to_vec()
+            .into_iter()
+            .map(|env_pair| CString::new(env_pair.into_vec()).unwrap())
+            .collect();
+
+        let env_ptrs: Vec<_> = env_vec
+            .iter()
+            .map(|env| env.as_ptr())
+            .chain(Some(ptr::null()))
+            .collect();
+
+        let ret = unsafe {
+            From::from(pam_sys::raw::pam_misc_paste_env(
+                self.handle as _,
+                env_ptrs.as_ptr(),
+            ))
+        };
+
+        self.handle_ret(ret, "set_env")
     }
 }

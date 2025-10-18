@@ -109,10 +109,9 @@ pub trait SessionType: Sized + SessionMetadataLookup {
 
         let session_env = Self::setup_session(config, context)?;
 
-        Command::new(executable)
-            .set_env(env.merge(session_env))
-            .spawn()
-            .context("Failed to spawn main session process")
+        let mut cmd = Command::new(executable);
+        cmd.set_env(env.merge(session_env))?; // infallible
+        cmd.spawn().context("Failed to spawn main session process")
     }
 }
 
