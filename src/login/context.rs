@@ -1,6 +1,7 @@
 use std::{os::unix::process::CommandExt, path::Path, process::Command};
 
 use anyhow::{Context, Result};
+use rustix::process::{self, Signal};
 use shrinkwraprs::Shrinkwrap;
 
 use crate::{
@@ -104,9 +105,15 @@ impl LoginContext {
         let mut cmd = Command::new(program);
 
         if let Some(switch_user) = &self.user {
-            // TODO: consider writing a manual impl instead of std
             cmd.uid(switch_user.uid).gid(switch_user.gid);
-        };
+        }
+
+        unsafe {
+            cmd.pre_exec(|| {
+                process::set_parent_process_death_signal(Some(Signal::TERM))?;
+                Ok(())
+            });
+        }
 
         cmd.set_env(self.env.clone()).unwrap();
         cmd

@@ -6,7 +6,8 @@ use std::{
     ffi::OsString,
     io::{BufRead, BufReader, PipeReader, pipe},
     path::{Path, PathBuf},
-    process::{self, Child, Command, Stdio},
+    process::{Child, Command, Stdio},
+    sync::mpsc,
     thread::{self, JoinHandle},
 };
 
@@ -16,6 +17,7 @@ use auth::{ClientAuthorityEnv, XAuthorityManager};
 
 use crate::{
     environment::prelude::*,
+    login::context::ExitReason,
     utils::{
         fd::{CommandFdCtxExt, FdContext},
         misc::OsStringExt,
@@ -105,6 +107,7 @@ impl WindowPath {
 
 pub struct XWatcher {
     process: Child,
+    shutdown_tx: mpsc::Sender<ExitReason>,
 }
 
 impl XWatcher {
@@ -112,7 +115,7 @@ impl XWatcher {
         println!("Xorg: {line}") // TODO: log levels
     }
 
-    fn handler(mut self) -> process::ExitStatus {
+    fn handler(mut self) {
         let mut stdout = BufReader::new(
             self.process
                 .stderr
@@ -125,12 +128,17 @@ impl XWatcher {
             Self::log(line);
         }
 
-        self.process
+        let exit_status = self
+            .process
             .wait()
-            .expect("Xorg not started, yet attaching logger")
+            .expect("Xorg not started, yet attaching logger");
+
+        self.shutdown_tx
+            .send(format!("Xorg exited with {exit_status}"))
+            .expect("Cannot send clean shutdown signal, aborting");
     }
 
-    fn start_thread(self) -> Result<JoinHandle<process::ExitStatus>> {
+    fn start_thread(self) -> Result<JoinHandle<()>> {
         thread::Builder::new()
             .name("Xorg watcher".into())
             .spawn(|| self.handler())
@@ -197,8 +205,7 @@ impl manager::SessionType for Session {
     type EnvDiff = (Display, ClientAuthorityEnv, WindowPath);
 
     fn setup_session(config: &Config, context: &mut SessionContext) -> Result<Self::EnvDiff> {
-        let env = &context.env;
-        let window_path = WindowPath::previous_plus_vt(env, &context.vt)?;
+        let window_path = WindowPath::previous_plus_vt(&context.env, &context.vt)?;
 
         let authority_manager = XAuthorityManager::new(context, config.lock_authority)
             .context("Failed to setup authority manager")?;
@@ -208,7 +215,12 @@ impl manager::SessionType for Session {
             .context("Failed to define server authority")?;
 
         let (future_display, process) = spawn_server(&config.xorg_path, server_authority, context)?;
-        XWatcher { process }.start_thread()?; // TODO: requires changes to trait
+
+        XWatcher {
+            process,
+            shutdown_tx: context.shutdown_tx.clone(),
+        }
+        .start_thread()?;
 
         // NOTE: this will block until the X server is ready
         if let Some(display) = future_display.wait()? {

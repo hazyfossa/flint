@@ -5,10 +5,11 @@ mod tty;
 pub mod users;
 
 use context::{LoginContext, SessionClass};
+use pam::{CredentialsOP, PamDisplay};
 pub use tty::control::RenderMode as VtRenderMode;
 
 use anyhow::{Context, Result};
-use rustix::process::setsid;
+use rustix::process;
 
 use crate::{
     APP_NAME,
@@ -19,7 +20,6 @@ use crate::{
         metadata::SessionMetadata,
     },
 };
-use pam::{CredentialsOP, PamDisplay};
 
 // NOTE: while technically PAM can query for a username
 // for now we work around that
@@ -50,7 +50,7 @@ fn login<T: SessionType>(
     let user_info = user_info_provider.query(&pam.get_username()?)?;
     let user_switch = user_info.as_user_id();
 
-    setsid().context("Failed to become a session leader process")?;
+    process::setsid().context("Failed to become a session leader process")?;
 
     let env = inherit_env
         .set(session_class)
