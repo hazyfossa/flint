@@ -5,16 +5,14 @@ mod session;
 mod utils;
 
 use anyhow::{Context, Result, anyhow};
-
 use pico_args::Arguments;
-use session::{
-    context::SessionContext,
-    dispatch_session,
-    manager::{SessionManager, SessionType},
-};
 
 use crate::{
-    session::manager::SessionClass,
+    login::context::LoginContext,
+    session::{
+        dispatch_session,
+        manager::{SessionManager, SessionType},
+    },
     utils::{
         config::Config,
         runtime_dir::{self, RuntimeDir},
@@ -45,30 +43,21 @@ fn run<Session: SessionType>(config: &Config, mut args: Arguments) -> Result<()>
         )
     })?;
 
-    let context = SessionContext::from_env(environment::current())?;
+    let context = LoginContext::current(environment::current())?;
+    let metadata = manager.lookup_metadata(&name)?;
 
-    let mut child = manager
-        .new_session(
-            &name,
-            context,
-            SessionClass::User {
-                early: false,
-                light: false,
-            },
-        )
+    let session = manager
+        .spawn_session(context, metadata.executable)
         .context("Failed to start session")?;
 
-    let ret = child.wait()?;
+    let exit_reason = session.join()?;
 
-    match ret.success() {
-        true => Ok(()),
-        false => Err(anyhow!(
-            "Main session process exited with status: {}",
-            ret.code()
-                .and_then(|code| Some(code.to_string()))
-                .unwrap_or("unknown".to_string())
-        )),
-    }
+    println!(
+        "Session exited.
+        Caused by: {exit_reason}"
+    );
+
+    Ok(())
 }
 
 fn daemon(_config: Config) -> Result<()> {

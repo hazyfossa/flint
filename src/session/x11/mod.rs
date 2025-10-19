@@ -10,7 +10,7 @@ use std::{
     thread::{self, JoinHandle},
 };
 
-use super::{context::VtNumber, manager::prelude::*};
+use super::manager::prelude::*;
 
 use auth::{ClientAuthorityEnv, XAuthorityManager};
 
@@ -37,7 +37,7 @@ impl Display {
 }
 
 impl EnvParser for Display {
-    fn serialize(self) -> OsString {
+    fn serialize(&self) -> OsString {
         format!(":{}", self.0).into()
     }
 
@@ -163,15 +163,14 @@ impl Default for Config {
 fn spawn_server(
     path: &Path,
     authority: PathBuf,
-    context: SessionContext,
+    context: &SessionContext,
 ) -> Result<(DisplayReceiver, Child)> {
     let mut fd_ctx = FdContext::new(3..5);
 
-    let mut xorg_path = Command::new(path);
-
     // TODO: this is flaky. Unsetting env causes strange behaviour.
     // Ensure that Xorg always starts non-elevated or bypass Xorg.wrap entirely
-    let command = xorg_path
+    let mut command = context.command(path);
+    command
         .arg(format!("vt{}", context.vt.to_string()))
         .args(["-seat".into(), context.seat.serialize()])
         .args(["-auth".into(), authority.into_os_string()])
@@ -180,7 +179,7 @@ fn spawn_server(
         .args(["-verbose", "3", "-logfile", "/dev/null"])
         .envs([("XORG_RUN_AS_USER_OK", "1")]); // TODO: relevant?
 
-    let (display_rx, command) = DisplayReceiver::setup(&mut fd_ctx, command)?;
+    let (display_rx, command) = DisplayReceiver::setup(&mut fd_ctx, &mut command)?;
 
     let process = command
         .with_fd_context(fd_ctx)
@@ -197,7 +196,7 @@ impl manager::SessionType for Session {
     type ManagerConfig = Config;
     type EnvDiff = (Display, ClientAuthorityEnv, WindowPath);
 
-    fn setup_session(config: &Config, context: SessionContext) -> Result<Self::EnvDiff> {
+    fn setup_session(config: &Config, context: &mut SessionContext) -> Result<Self::EnvDiff> {
         let env = &context.env;
         let window_path = WindowPath::previous_plus_vt(env, &context.vt)?;
 

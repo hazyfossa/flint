@@ -1,88 +1,31 @@
 use anyhow::{Context, Result};
 use serde::{Deserialize, de::DeserializeOwned};
+use shrinkwraprs::Shrinkwrap;
 
 use std::{
-    path::PathBuf,
-    process::{self, Command},
+    any::Any,
+    path::{Path, PathBuf},
+    process::Command,
+    sync::mpsc,
 };
 
-use super::{context::SessionContext, metadata::SessionMetadataLookup};
+use super::metadata::SessionMetadataLookup;
 use crate::{
-    environment::{EnvContainer, EnvRecipient, prelude::*},
+    environment::{EnvContainer, EnvContainerPartial, EnvRecipient, prelude::*},
+    login::{VtRenderMode, context::LoginContext},
     session::metadata::{SessionMap, SessionMetadata},
-    utils::{config::Config, misc::OsStringExt},
+    utils::config::Config,
 };
 
 pub mod prelude {
-    pub use crate::session::{
-        context::SessionContext,
-        manager,
-        metadata::{self, SessionMap, SessionMetadata},
+    pub use crate::{
+        login::context::VtNumber,
+        session::{
+            manager::{self, SessionContext},
+            metadata::{self, SessionMap, SessionMetadata},
+        },
     };
     pub use serde::Deserialize;
-}
-
-define_env!("XDG_SESSION_DESKTOP", SessionNameEnv(String));
-env_parser_auto!(SessionNameEnv);
-define_env!("XDG_SESSION_TYPE", SessionTypeEnv(String));
-env_parser_auto!(SessionTypeEnv);
-
-// TODO: investigate how this can contain more than one name
-define_env!("XDG_CURRENT_DESKTOP", SessionCompositionEnv(Vec<String>));
-
-impl SessionCompositionEnv {
-    fn simple(name: String) -> Self {
-        Self(vec![name])
-    }
-}
-
-impl EnvParser for SessionCompositionEnv {
-    fn serialize(self) -> std::ffi::OsString {
-        self.0.join(";").into()
-    }
-
-    fn deserialize(value: std::ffi::OsString) -> Result<Self> {
-        Ok(Self(
-            value
-                .try_to_string()?
-                .split(';')
-                .map(String::from)
-                .collect(),
-        ))
-    }
-}
-
-// UserIncomplete, Manager, Bacjground and None are not here as those aren't relevant
-#[allow(dead_code)]
-pub enum SessionClass {
-    User { early: bool, light: bool },
-    Greeter,
-    LockScreen,
-}
-
-impl_env!("XDG_SESSION_CLASS", SessionClass);
-
-impl EnvParser for SessionClass {
-    fn serialize(self) -> std::ffi::OsString {
-        match self {
-            Self::User { early, light } => {
-                let mut string = "user".to_string();
-                if early {
-                    string += "-early"
-                }
-                if light {
-                    string += "-light"
-                }
-                string.into()
-            }
-            Self::Greeter => "greeter".into(),
-            Self::LockScreen => "lock-screen".into(),
-        }
-    }
-
-    fn deserialize(_value: std::ffi::OsString) -> Result<Self> {
-        todo!()
-    }
 }
 
 pub trait SessionType: Sized + SessionMetadataLookup {
@@ -91,27 +34,76 @@ pub trait SessionType: Sized + SessionMetadataLookup {
     type ManagerConfig: Default + DeserializeOwned;
     type EnvDiff: EnvContainer;
 
+    const VT_RENDER_MODE: VtRenderMode = VtRenderMode::Graphics;
+
     fn setup_session(
         config: &Self::ManagerConfig,
-        context: SessionContext,
+        context: &mut SessionContext,
     ) -> Result<Self::EnvDiff>;
+}
 
-    /// If you do not need fine-grained control over the startup flow
-    /// consider implementing setup_session() instead
-    fn spawn_session(
-        config: &Self::ManagerConfig,
-        executable: PathBuf,
-        context: SessionContext,
-    ) -> Result<process::Child> {
-        // Note: this is a cheap clone
-        // As Env is immutable underneath
-        let env = context.env.clone();
+type ExitReason = String;
 
-        let session_env = Self::setup_session(config, context)?;
+#[derive(Shrinkwrap)]
+pub struct SessionContext {
+    #[shrinkwrap(main_field)]
+    pub login_context: LoginContext,
+    pub shutdown_tx: mpsc::Sender<ExitReason>,
 
-        let mut cmd = Command::new(executable);
-        cmd.set_env(env.merge(session_env))?; // infallible
-        cmd.spawn().context("Failed to spawn main session process")
+    resources: Vec<Box<dyn Any>>,
+}
+
+impl SessionContext {
+    pub fn command(&self, program: &Path) -> Command {
+        self.login_context.command(program)
+    }
+
+    pub fn persist(&mut self, resource: Box<dyn Any>) {
+        self.resources.push(resource);
+    }
+}
+
+pub struct SessionBuilder {
+    context: SessionContext,
+    shutdown_rx: mpsc::Receiver<ExitReason>,
+}
+
+impl SessionBuilder {
+    fn new(login_context: LoginContext) -> Self {
+        let (shutdown_tx, shutdown_rx) = mpsc::channel();
+
+        Self {
+            shutdown_rx,
+            context: SessionContext {
+                login_context,
+                shutdown_tx,
+                resources: Vec::new(),
+            },
+        }
+    }
+
+    fn finish(self) -> SessionInstance {
+        SessionInstance {
+            resources: self.context.resources,
+            shutdown_rx: self.shutdown_rx,
+        }
+    }
+}
+
+pub struct SessionInstance {
+    resources: Vec<Box<dyn Any>>,
+    shutdown_rx: mpsc::Receiver<ExitReason>,
+}
+
+impl SessionInstance {
+    pub fn join(self) -> Result<ExitReason> {
+        let exit_reason = self
+            .shutdown_rx
+            .recv()
+            .context("Tx end of session shutdown channel unexpectedly closed")?;
+
+        drop(self.resources);
+        Ok(exit_reason)
     }
 }
 
@@ -133,25 +125,25 @@ impl<T: SessionType> SessionManager<T> {
         })
     }
 
-    pub fn new_session(
+    pub fn spawn_session(
         &self,
-        name: &str,
-        mut context: SessionContext,
-        class: SessionClass,
-    ) -> Result<process::Child> {
-        let metadata = self.lookup_metadata(name)?;
+        context: LoginContext,
+        executable: PathBuf,
+    ) -> Result<SessionInstance> {
+        let mut builder = SessionBuilder::new(context);
+        let session_env_diff = T::setup_session(&self.config, &mut builder.context)?;
 
-        // TODO: should we set env to this or the SessionTypeID?
-        let display_name = metadata.display_name.unwrap_or(name.to_string());
+        let mut command = builder.context.command(&executable);
 
-        context.env = context
-            .env
-            .set(class)
-            .set(SessionNameEnv(display_name.clone()))
-            .set(SessionCompositionEnv::simple(display_name))
-            .set(SessionTypeEnv(T::XDG_TYPE.to_string()));
+        command.merge_env(session_env_diff.to_env()).unwrap();
 
-        T::spawn_session(&self.config, metadata.executable, context)
+        let _child = command
+            .spawn()
+            .context("Failed to spawn main session executable")?;
+
+        // TODO: connect child.wait to shutdown_tx
+
+        Ok(builder.finish())
     }
 
     pub fn lookup_metadata(&self, name: &str) -> Result<SessionMetadata> {
@@ -164,6 +156,15 @@ impl<T: SessionType> SessionManager<T> {
 
     pub fn lookup_metadata_all(&self) -> SessionMap {
         self.entries.clone().union(T::lookup_metadata_all())
+    }
+}
+
+define_env!("XDG_SESSION_TYPE", pub SessionTypeEnv(String));
+env_parser_auto!(SessionTypeEnv);
+
+impl<T: SessionType> EnvContainerPartial for SessionManager<T> {
+    fn apply_as_container(&self, env: Env) -> Env {
+        env.set(SessionTypeEnv(T::XDG_TYPE.to_string()))
     }
 }
 

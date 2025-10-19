@@ -26,7 +26,10 @@ impl manager::SessionType for Session {
     type ManagerConfig = Config;
     type EnvDiff = Display;
 
-    fn setup_session(_config: &Config, _context: SessionContext) -> anyhow::Result<Self::EnvDiff> {
+    fn setup_session(
+        _config: &Config,
+        _context: &mut SessionContext,
+    ) -> anyhow::Result<Self::EnvDiff> {
         todo!()
     }
 }

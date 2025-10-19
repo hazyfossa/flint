@@ -151,24 +151,37 @@ impl PAM<'_> {
     }
 }
 
+fn env_to_c_pointers(env: Env) -> Vec<*const i8> {
+    let env_vec: Vec<_> = env
+        .to_vec()
+        .into_iter()
+        .map(|env_pair| CString::new(env_pair.into_vec()).unwrap())
+        .collect();
+
+    env_vec
+        .iter()
+        .map(|env| env.as_ptr())
+        .chain(Some(ptr::null()))
+        .collect()
+}
+
 impl EnvRecipient for PAM<'_> {
+    fn merge_env(&mut self, env: Env) -> Result<()> {
+        let env = env_to_c_pointers(env);
+
+        for kv_pair in env.to_vec() {
+            pam_call!(let ret = self.pam_putenv(kv_pair));
+            ret?;
+        }
+        Ok(())
+    }
+
     fn set_env(&mut self, env: Env) -> Result<()> {
         // NOTE: misc_paste_env in pam_sys is constrained to unicode (UTF-8)
         // while our Env is not
 
-        let env_vec: Vec<_> = env
-            .to_vec()
-            .into_iter()
-            .map(|env_pair| CString::new(env_pair.into_vec()).unwrap())
-            .collect();
-
-        let env_ptrs: Vec<_> = env_vec
-            .iter()
-            .map(|env| env.as_ptr())
-            .chain(Some(ptr::null()))
-            .collect();
-
-        pam_call!(let ret = self.pam_misc_paste_env(env_ptrs.as_ptr()));
+        let env = env_to_c_pointers(env);
+        pam_call!(let ret = self.pam_misc_paste_env(env.as_ptr()));
         ret
     }
 }

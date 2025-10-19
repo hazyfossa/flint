@@ -5,7 +5,9 @@ use im::HashMap;
 
 pub mod prelude {
     pub use super::{Env, EnvParser, EnvVar};
-    pub use crate::{define_env, env_parser_auto, env_parser_raw, impl_env};
+    pub use crate::{
+        define_env, env_parser_auto, env_parser_raw, impl_env, utils::misc::OsStringExt,
+    };
     pub use std::ops::Deref;
 }
 
@@ -15,7 +17,7 @@ pub trait EnvVar: Sized + EnvParser {
 }
 
 pub trait EnvParser: Sized {
-    fn serialize(self) -> OsString;
+    fn serialize(&self) -> OsString;
     fn deserialize(value: OsString) -> Result<Self>;
 }
 
@@ -24,13 +26,12 @@ macro_rules! env_parser_auto {
     ($target:ident) => {
         impl EnvParser for $target {
             #[inline]
-            fn serialize(self) -> std::ffi::OsString {
+            fn serialize(&self) -> std::ffi::OsString {
                 self.0.to_string().into()
             }
 
             #[inline]
             fn deserialize(value: std::ffi::OsString) -> anyhow::Result<Self> {
-                use $crate::utils::misc::OsStringExt;
                 Ok(Self(value.try_to_string()?.parse()?))
             }
         }
@@ -42,8 +43,8 @@ macro_rules! env_parser_raw {
     ($target:ident) => {
         impl EnvParser for $target {
             #[inline]
-            fn serialize(self) -> std::ffi::OsString {
-                self.0
+            fn serialize(&self) -> std::ffi::OsString {
+                self.0.clone()
             }
 
             #[inline]
@@ -126,6 +127,12 @@ pub fn current() -> Env {
 }
 
 impl Env {
+    pub fn empty() -> Self {
+        Self {
+            state: HashMap::new(),
+        }
+    }
+
     pub fn from_values(values: impl IntoIterator<Item = (String, OsString)>) -> Self {
         Self {
             state: values.into_iter().collect(),
@@ -160,7 +167,11 @@ impl Env {
     }
 
     pub fn merge<E: EnvContainer>(self, container: E) -> Self {
-        container.apply(self)
+        container.apply_as_container(self)
+    }
+
+    pub fn merge_from<E: EnvContainerPartial>(self, container: &E) -> Self {
+        container.apply_as_container(self)
     }
 
     pub fn to_vec(&self) -> Vec<OsString> {
@@ -180,18 +191,33 @@ impl Env {
 }
 
 pub trait EnvRecipient {
+    fn merge_env(&mut self, env: Env) -> Result<()>;
     fn set_env(&mut self, env: Env) -> Result<()>;
 }
 
 impl EnvRecipient for Command {
+    fn merge_env(&mut self, env: Env) -> Result<()> {
+        self.envs(env.state);
+        Ok(())
+    }
+
     fn set_env(&mut self, env: Env) -> Result<()> {
         self.env_clear().envs(env.state);
         Ok(())
     }
 }
 
-pub trait EnvContainer {
-    fn apply(self, env: Env) -> Env;
+pub trait EnvContainer: Sized {
+    fn apply_as_container(self, env: Env) -> Env;
+
+    fn to_env(self) -> Env {
+        let env = Env::empty();
+        self.apply_as_container(env)
+    }
+}
+
+pub trait EnvContainerPartial {
+    fn apply_as_container(&self, env: Env) -> Env;
 }
 
 #[rustfmt::skip]
@@ -203,7 +229,7 @@ mod env_container_variadics {
             #[allow(non_camel_case_types)]
             impl<$($name: EnvVar),+> EnvContainer for ($($name,)+)
             {
-                fn apply(self, env: Env) -> Env {
+                fn apply_as_container(self, env: Env) -> Env {
                     let ($($name,)+) = self;
                     $(let env = env.set($name);)+
                     env
@@ -226,13 +252,13 @@ mod env_container_variadics {
 }
 
 impl<T: EnvVar> EnvContainer for T {
-    fn apply(self, env: Env) -> Env {
+    fn apply_as_container(self, env: Env) -> Env {
         env.set(self)
     }
 }
 
 impl EnvContainer for Env {
-    fn apply(self, env: Env) -> Env {
+    fn apply_as_container(self, env: Env) -> Env {
         Self {
             state: env.state.union(self.state),
         }

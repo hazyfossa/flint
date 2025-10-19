@@ -1,7 +1,6 @@
+use anyhow::{Context, Result, anyhow, bail};
 use freedesktop_file_parser::{self as parser, EntryType};
 use fs_err::{DirEntry, File, read_dir};
-
-use anyhow::{Context, Result, anyhow, bail};
 use im::HashMap;
 use serde::Deserialize;
 
@@ -11,13 +10,15 @@ use std::{
     path::PathBuf,
 };
 
-pub type SessionTypeID = String;
-pub type SessionMap = HashMap<SessionTypeID, SessionMetadata>;
+use crate::environment::{EnvContainerPartial, prelude::*};
+
+pub type SessionUniqueName = String;
+pub type SessionMap = HashMap<SessionUniqueName, SessionMetadata>;
 
 #[derive(Clone, Deserialize)]
 pub struct SessionMetadata {
-    /// If it is unset, SessionTypeID should be used instead
-    pub display_name: Option<String>,
+    /// If it is unset, SessionUniqueName should be used instead
+    pub name: String,
     pub description: Option<String>,
     pub executable: PathBuf,
 }
@@ -30,7 +31,7 @@ pub trait SessionMetadataLookup {
     /// I.e. the metadata can specify an executable that is unavailable.
     ///
     /// Entries with invalid metadata are silently discarded.
-    fn lookup_metadata_all() -> HashMap<SessionTypeID, SessionMetadata>;
+    fn lookup_metadata_all() -> HashMap<SessionUniqueName, SessionMetadata>;
 }
 
 pub trait FreedesktopMetadata {
@@ -55,7 +56,7 @@ fn parse_freedesktop_file(file: &mut File) -> Result<SessionMetadata> {
         .into();
 
     Ok(SessionMetadata {
-        display_name: Some(parsed.name.default),
+        name: parsed.name.default,
         description: parsed.comment.map(|x| x.default),
         executable,
     })
@@ -112,12 +113,47 @@ impl<T: FreedesktopMetadata> SessionMetadataLookup for T {
 
 impl Display for SessionMetadata {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        if let Some(display_name) = &self.display_name {
-            write!(f, "{}", display_name)?;
-        }
+        write!(f, "{}", self.name)?;
+
         if let Some(comment) = &self.description {
             write!(f, ": {}", comment)?;
         };
+
         writeln!(f, "")
+    }
+}
+
+define_env!("XDG_SESSION_DESKTOP", SessionNameEnv(String));
+env_parser_auto!(SessionNameEnv);
+
+// TODO: investigate how this can contain more than one name
+define_env!("XDG_CURRENT_DESKTOP", SessionCompositionEnv(Vec<String>));
+
+impl SessionCompositionEnv {
+    fn simple(name: String) -> Self {
+        Self(vec![name])
+    }
+}
+
+impl EnvParser for SessionCompositionEnv {
+    fn serialize(&self) -> std::ffi::OsString {
+        self.0.join(";").into()
+    }
+
+    fn deserialize(value: std::ffi::OsString) -> Result<Self> {
+        Ok(Self(
+            value
+                .try_to_string()?
+                .split(';')
+                .map(String::from)
+                .collect(),
+        ))
+    }
+}
+
+impl EnvContainerPartial for SessionMetadata {
+    fn apply_as_container(&self, env: Env) -> Env {
+        env.set(SessionNameEnv(self.name.clone()))
+            .set(SessionCompositionEnv::simple(self.name.clone()))
     }
 }

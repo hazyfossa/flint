@@ -23,7 +23,7 @@ use rustix::{
 
 use super::Display;
 
-use crate::{environment::prelude::*, session::context::VtNumber, utils::runtime_dir};
+use crate::{environment::prelude::*, login::context::VtNumber, utils::runtime_dir};
 
 // TODO: raw mode
 define_env!("XAUTHORITY", pub ClientAuthorityEnv(OsString));
