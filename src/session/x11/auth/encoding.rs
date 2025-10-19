@@ -1,10 +1,12 @@
 use binrw::binrw;
 pub use binrw::{BinRead, BinWrite};
+use zeroize::{Zeroize, ZeroizeOnDrop};
 
 pub type Result<T> = std::result::Result<T, binrw::Error>;
 
 #[binrw]
 #[brw(repr(u16))]
+#[derive(Zeroize)]
 pub enum Family {
     Local = 256,
     Wild = 65535,
@@ -27,6 +29,7 @@ fn bound_len<B: TryFrom<usize>, T>(value: &T, field: &str) -> Result<B> {
 
 #[binrw]
 #[brw(little)]
+#[derive(ZeroizeOnDrop)]
 pub struct Entry {
     family: Family,
 
@@ -83,7 +86,7 @@ impl From<Scope> for (Family, Hostname) {
 
 // Technically, this should be a trait "AuthMethod"
 // Practically, cookie is the only method that is currently used
-// TODO: do we need special memory handling here for security? zeroize on drop?
+#[derive(ZeroizeOnDrop)]
 pub struct Cookie([u8; Self::BYTES_LEN]);
 impl Cookie {
     pub const BYTES_LEN: usize = 16; // 16 * 8 = 128 random bits
@@ -94,7 +97,6 @@ impl Cookie {
     }
 
     pub fn raw_data(&self) -> (Vec<u8>, Vec<u8>) {
-        // TODO: return &str for name?
         (Self::AUTH_NAME.into(), self.0.into())
     }
 }

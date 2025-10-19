@@ -131,10 +131,10 @@ impl<T: SessionType> SessionManager<T> {
         executable: PathBuf,
     ) -> Result<SessionInstance> {
         let mut builder = SessionBuilder::new(context);
+
         let session_env_diff = T::setup_session(&self.config, &mut builder.context)?;
 
         let mut command = builder.context.command(&executable);
-
         command.merge_env(session_env_diff.to_env()).unwrap();
 
         let _child = command
