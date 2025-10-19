@@ -5,7 +5,8 @@ use shrinkwraprs::Shrinkwrap;
 
 use crate::{
     environment::{EnvContainer, EnvRecipient, prelude::*},
-    login::UserInfo,
+    login::users::UserID,
+    utils::runtime_dir::RuntimeDirManager,
 };
 
 #[derive(Shrinkwrap, Clone)]
@@ -67,20 +68,6 @@ impl EnvParser for SessionClass {
     }
 }
 
-pub struct UserSwitch {
-    uid: u32,
-    gid: u32,
-}
-
-impl UserInfo {
-    pub fn user_switch_data(&self) -> UserSwitch {
-        UserSwitch {
-            uid: self.uid,
-            gid: self.gid,
-        }
-    }
-}
-
 pub type ExitReason = String;
 
 pub struct LoginContext {
@@ -88,16 +75,21 @@ pub struct LoginContext {
     pub seat: Seat,
 
     pub env: Env,
-    switch_user: Option<UserSwitch>,
+    pub user: Option<UserID>,
+    pub runtime_dir_manager: RuntimeDirManager,
 }
 
 impl LoginContext {
-    pub(super) fn from_env(mut env: Env, switch_user: Option<UserSwitch>) -> Result<Self> {
+    pub(super) fn from_env(mut env: Env, switch_user: Option<UserID>) -> Result<Self> {
+        let runtime_dir_manager =
+            RuntimeDirManager::from_env(&env).context("Failed to create runtime dir manager")?;
+
         Ok(Self {
             vt: env.pull()?,
             seat: env.pull().unwrap_or_default(), // Propagate if seat exists but invalid
             env,
-            switch_user,
+            user: switch_user,
+            runtime_dir_manager,
         })
     }
 
@@ -111,7 +103,7 @@ impl LoginContext {
     pub fn command(&self, program: &Path) -> Command {
         let mut cmd = Command::new(program);
 
-        if let Some(switch_user) = &self.switch_user {
+        if let Some(switch_user) = &self.user {
             // TODO: consider writing a manual impl instead of std
             cmd.uid(switch_user.uid).gid(switch_user.gid);
         };

@@ -13,10 +13,7 @@ use crate::{
         dispatch_session,
         manager::{SessionManager, SessionType},
     },
-    utils::{
-        config::Config,
-        runtime_dir::{self, RuntimeDir},
-    },
+    utils::config::Config,
 };
 
 pub const APP_NAME: &str = "flint";
@@ -77,12 +74,6 @@ fn cli(subcommand: &str, mut args: Arguments, config: Config) -> Result<()> {
 }
 
 fn main() -> Result<()> {
-    let xdg_context = xdg::BaseDirectories::new();
-
-    runtime_dir::current.init(
-        RuntimeDir::create(&xdg_context, APP_NAME).context("Failed to create runtime directory")?,
-    )?;
-
     let mut args = Arguments::from_env();
 
     let config = Config::from_args(&mut args, &format!("/etc/{APP_NAME}.toml"))?;

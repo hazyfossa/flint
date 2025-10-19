@@ -76,79 +76,76 @@ pub mod fd {
     }
 }
 
-pub mod globals {
-    use std::sync::OnceLock;
-
-    use anyhow::{Result, anyhow};
-
-    pub struct Global<T> {
-        inner: OnceLock<T>,
-        name: &'static str,
-    }
-
-    impl<T> Global<T> {
-        pub const fn define(name: &'static str) -> Self {
-            Self {
-                inner: OnceLock::new(),
-                name,
-            }
-        }
-
-        pub fn get(&self) -> Result<&T> {
-            self.inner
-                .get()
-                .ok_or(anyhow!("Global {} not initialized", self.name))
-        }
-
-        pub fn init(&self, object: T) -> Result<()> {
-            self.inner
-                .set(object)
-                .map_err(|_| anyhow!("Cannot initialize global {} twice", self.name))
-        }
-    }
-}
-
 pub mod runtime_dir {
     use std::{
-        fs,
-        ops::Deref,
-        os::unix::fs::DirBuilderExt,
-        path::{Path, PathBuf},
+        fs::{self, DirBuilder, remove_dir_all},
+        os::unix::fs::{DirBuilderExt, PermissionsExt},
+        path::PathBuf,
     };
 
-    use anyhow::{Context, Result};
+    use anyhow::{Context, Result, anyhow};
+    use shrinkwraprs::Shrinkwrap;
 
-    use crate::utils::globals::Global;
+    use crate::{APP_NAME, environment::prelude::*};
 
-    #[allow(non_upper_case_globals)]
-    pub static current: Global<RuntimeDir> = Global::define("runtime dir");
-
-    #[derive(Debug)]
+    #[derive(Shrinkwrap)]
     pub struct RuntimeDir {
+        #[shrinkwrap(main_field)]
         path: PathBuf,
     }
 
-    impl RuntimeDir {
-        pub fn create(xdg_context: &xdg::BaseDirectories, app_name: &str) -> Result<Self> {
-            let path = xdg_context
-                .get_runtime_directory()
-                .context("Failed to query base runtime directory")?
-                .join(app_name);
-
-            fs::DirBuilder::new()
-                .mode(0o700)
-                .recursive(true)
-                .create(&path)?;
-
-            Ok(Self { path })
+    impl Drop for RuntimeDir {
+        fn drop(&mut self) {
+            let _ = remove_dir_all(&self.path);
         }
     }
 
-    impl Deref for RuntimeDir {
-        type Target = Path;
+    #[derive(Debug)]
+    pub struct RuntimeDirManager {
+        path: PathBuf,
+    }
 
-        fn deref(&self) -> &Self::Target {
-            &self.path
+    define_env!("XDG_RUNTIME_DIR", RuntimeDirEnv(PathBuf));
+    env_parser_raw!(RuntimeDirEnv);
+
+    impl RuntimeDirManager {
+        pub fn from_env(env: &Env) -> Result<Self> {
+            let path = &env
+                .peek::<RuntimeDirEnv>()
+                .context("Environment does not provide a runtime directory")?
+                .0;
+
+            let permissions = fs_err::metadata(&path)?.permissions().mode();
+
+            if permissions & 0o077 != 0 {
+                Err(anyhow!(
+                    "Runtime directory is insecure: expecting permissions `077`, got {permissions}"
+                ))
+            } else {
+                Ok(Self {
+                    path: path.to_path_buf(),
+                })
+            }
+        }
+
+        fn new(path: PathBuf) -> Result<Self> {
+            fs::DirBuilder::new()
+                .mode(0o700)
+                .recursive(true)
+                .create(&path.join(APP_NAME))?;
+
+            Ok(Self { path })
+        }
+
+        pub fn create(&self, name: &str) -> Result<RuntimeDir> {
+            let directory = self.path.join(name);
+
+            DirBuilder::new()
+                .mode(0o700)
+                .create(&directory)
+                .context(format!("cannot create path: {directory:?}"))?;
+
+            Ok(RuntimeDir { path: directory })
         }
     }
 }

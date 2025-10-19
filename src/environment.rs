@@ -40,12 +40,12 @@ macro_rules! env_parser_raw {
         impl EnvParser for $target {
             #[inline]
             fn serialize(&self) -> std::ffi::OsString {
-                self.0.clone()
+                self.0.clone().into()
             }
 
             #[inline]
             fn deserialize(value: std::ffi::OsString) -> anyhow::Result<Self> {
-                Ok(Self(value))
+                Ok(Self(value.into()))
             }
         }
     };
@@ -61,11 +61,6 @@ macro_rules! define_env {
     };
 }
 
-// TODO
-// This is kinda right yet wrong
-// Instead of this gruesome deref nesting
-// Build accessor.key pseudo structs and autogenerate a method to pull from env
-
 #[macro_export]
 macro_rules! impl_env {
     ($key:expr, $target:ident) => {
@@ -78,8 +73,6 @@ macro_rules! impl_env {
 
 // This is a purely marker-abstraction
 // As the value pulled from env would always be owned due to deserialization
-//
-// Other designs could allow this to be optimized to a ref
 pub struct PeekEnv<T>(T);
 
 impl<T> Deref for PeekEnv<T> {
@@ -116,11 +109,11 @@ impl Env {
         }
     }
 
-    pub fn peek<E: EnvVar>(&self) -> Result<Option<PeekEnv<E>>> {
-        match self.state.get(E::KEY) {
-            None => Ok(None),
-            Some(value) => Ok(Some(PeekEnv(E::deserialize(value.clone())?))),
-        }
+    pub fn peek<E: EnvVar>(&self) -> Result<PeekEnv<E>> {
+        self.state
+            .get(E::KEY)
+            .ok_or(anyhow!("Environment variable {} is unset", E::KEY))
+            .and_then(|value| Ok(PeekEnv(E::deserialize(value.clone())?)))
     }
 
     pub fn pull<E: EnvVar>(&mut self) -> Result<E> {

@@ -8,9 +8,8 @@ use file::*;
 
 use std::{
     ffi::OsString,
-    fs::DirBuilder,
     io,
-    os::unix::fs::DirBuilderExt,
+    os::unix::fs,
     path::{Path, PathBuf},
 };
 
@@ -23,7 +22,9 @@ use rustix::{
 
 use super::Display;
 
-use crate::{environment::prelude::*, login::context::VtNumber, utils::runtime_dir};
+use crate::{
+    environment::prelude::*, session::manager::SessionContext, utils::runtime_dir::RuntimeDir,
+};
 
 // TODO: raw mode
 define_env!("XAUTHORITY", pub ClientAuthorityEnv(OsString));
@@ -44,26 +45,19 @@ fn get_hostname() -> Hostname {
 // Are there any side-effects? What breaks?
 pub struct XAuthorityManager {
     lock: bool,
-    directory: PathBuf,
+    directory: RuntimeDir,
     cookie: Cookie,
     hostname: Hostname,
 }
 
 impl XAuthorityManager {
-    pub fn new(vt: &VtNumber, lock: bool) -> Result<Self> {
+    pub fn new(context: &SessionContext, lock: bool) -> Result<Self> {
         let cookie = make_cookie()?;
         let hostname = get_hostname();
 
-        let directory = runtime_dir::current
-            .get()?
-            .join(format!("vt-{}", vt.to_string()));
-
-        // TODO: what to do with dir on Xorg exit?
-
-        DirBuilder::new()
-            .mode(0o700)
-            .create(&directory)
-            .context(format!("cannot create path: {directory:?}"))?;
+        let directory = context
+            .runtime_dir_manager
+            .create(&format!("vt-{}", context.vt.to_string()))?;
 
         Ok(Self {
             lock,
@@ -134,7 +128,18 @@ impl XAuthorityManager {
         Ok(ClientAuthorityEnv(path.into()))
     }
 
-    // fn seal(self) {
-    //     todo!()
-    // }
+    fn finish(self, context: &mut SessionContext) -> Result<()> {
+        if let Some(switch_user) = &context.user {
+            fs::chown(
+                self.directory.clone(),
+                Some(switch_user.uid),
+                Some(switch_user.gid),
+            )
+            .context("Failed to change ownership on the xauthority dir")?;
+        };
+
+        context.persist(Box::new(self.directory));
+
+        Ok(())
+    }
 }

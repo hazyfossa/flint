@@ -1,11 +1,10 @@
 #![allow(dead_code)]
-mod pam;
-
 pub mod context;
-
-use context::SessionClass;
-
+mod pam;
 mod tty;
+pub mod users;
+
+use context::{LoginContext, SessionClass};
 pub use tty::control::RenderMode as VtRenderMode;
 
 use anyhow::{Context, Result};
@@ -13,31 +12,14 @@ use rustix::process::setsid;
 
 use crate::{
     APP_NAME,
-    environment::{Env, EnvContainer, EnvRecipient},
-    login::context::LoginContext,
+    environment::{Env, EnvRecipient},
+    login::users::UserInfoProvider,
     session::{
         manager::{SessionManager, SessionType},
         metadata::SessionMetadata,
     },
 };
 use pam::{CredentialsOP, PamDisplay};
-
-// NOTE: this is a stub
-struct UserInfo {
-    username: String,
-    uid: u32,
-    gid: u32,
-}
-
-impl EnvContainer for UserInfo {
-    fn apply_as_container(self, _env: Env) -> Env {
-        todo!()
-    }
-}
-
-trait UserInfoProvider {
-    fn query(&self, name: &str) -> Result<UserInfo>;
-}
 
 // NOTE: while technically PAM can query for a username
 // for now we work around that
@@ -66,7 +48,7 @@ fn login<T: SessionType>(
     pam.credentials(CredentialsOP::Establish)?;
 
     let user_info = user_info_provider.query(&pam.get_username()?)?;
-    let user_switch = user_info.user_switch_data();
+    let user_switch = user_info.as_user_id();
 
     setsid().context("Failed to become a session leader process")?;
 

@@ -95,10 +95,10 @@ env_parser_auto!(WindowPath);
 
 impl WindowPath {
     fn previous_plus_vt(env: &Env, vt: &VtNumber) -> Result<Self> {
-        let previous = env.peek::<Self>()?;
+        let previous = env.peek::<Self>();
         Ok(Self(match previous {
-            Some(path) => format!("{}:{}", path.0, vt.to_string()),
-            None => vt.to_string(),
+            Ok(path) => format!("{}:{}", path.0, vt.to_string()),
+            Err(_) => vt.to_string(),
         }))
     }
 }
@@ -200,7 +200,7 @@ impl manager::SessionType for Session {
         let env = &context.env;
         let window_path = WindowPath::previous_plus_vt(env, &context.vt)?;
 
-        let authority_manager = XAuthorityManager::new(&context.vt, config.lock_authority)
+        let authority_manager = XAuthorityManager::new(context, config.lock_authority)
             .context("Failed to setup authority manager")?;
 
         let server_authority = authority_manager
