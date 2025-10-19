@@ -20,7 +20,7 @@ impl manager::SessionType for Session {
     const VT_RENDER_MODE: VtRenderMode = VtRenderMode::Text;
 
     fn setup_session(_config: &Config, context: &mut SessionContext) -> Result<Self::EnvDiff> {
-        Ok(context.vt.clone())
+        Ok(context.terminal.number.clone())
     }
 }
 

@@ -2,20 +2,31 @@ use std::{os::unix::process::CommandExt, path::Path, process::Command};
 
 use anyhow::{Context, Result};
 use rustix::process::{self, Signal};
-use shrinkwraprs::Shrinkwrap;
 
 use crate::{
     environment::{EnvContainer, EnvRecipient, prelude::*},
-    login::users::UserID,
+    login::{tty::ActiveVT, users::UserID},
     utils::runtime_dir::RuntimeDirManager,
 };
 
-#[derive(Shrinkwrap, Clone)]
+#[derive(Clone, Copy, PartialEq)]
 pub struct VtNumber(u16);
 
 impl From<u16> for VtNumber {
     fn from(value: u16) -> Self {
         Self(value)
+    }
+}
+
+impl VtNumber {
+    pub fn as_int(self) -> u16 {
+        self.0
+    }
+}
+
+impl ToString for VtNumber {
+    fn to_string(&self) -> String {
+        self.0.to_string()
     }
 }
 
@@ -72,7 +83,7 @@ impl EnvParser for SessionClass {
 pub type ExitReason = String;
 
 pub struct LoginContext {
-    pub vt: VtNumber,
+    pub terminal: ActiveVT,
     pub seat: Seat,
 
     pub env: Env,
@@ -81,24 +92,39 @@ pub struct LoginContext {
 }
 
 impl LoginContext {
-    pub(super) fn from_env(mut env: Env, switch_user: Option<UserID>) -> Result<Self> {
+    pub fn new(env: Env, seat: Seat, terminal: ActiveVT, switch_user: UserID) -> Result<Self> {
         let runtime_dir_manager =
             RuntimeDirManager::from_env(&env).context("Failed to create runtime dir manager")?;
 
         Ok(Self {
-            vt: env.pull()?,
-            seat: env.pull().unwrap_or_default(), // Propagate if seat exists but invalid
+            terminal,
+            seat,
             env,
-            user: switch_user,
+            user: Some(switch_user),
             runtime_dir_manager,
         })
     }
 
-    pub fn current(env: Env) -> Result<Self> {
-        Self::from_env(env, None).context(
-            "Cannot take control over current login context.
-            Most likely you are already running a graphical session.",
-        )
+    pub fn current(mut env: Env) -> Result<Self> {
+        let runtime_dir_manager =
+            RuntimeDirManager::from_env(&env).context("Failed to create runtime dir manager")?;
+
+        let vt_number = env.pull::<VtNumber>().context(
+            "Cannot take over current login context.
+        Most likely you are already running a graphical session.",
+        )?;
+
+        let terminal = ActiveVT::current(vt_number)?;
+
+        let seat = env.pull::<Seat>().unwrap_or_default();
+
+        Ok(Self {
+            terminal,
+            seat,
+            env,
+            user: None,
+            runtime_dir_manager,
+        })
     }
 
     pub fn command(&self, program: &Path) -> Command {

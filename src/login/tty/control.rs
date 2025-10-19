@@ -4,7 +4,10 @@ use std::{
 };
 
 use anyhow::{Result, bail};
-use rustix::{io, ioctl};
+use rustix::{
+    io::{self, write},
+    ioctl,
+};
 
 use super::VtNumber;
 
@@ -122,7 +125,7 @@ struct SwitchVtTarget {
 
 pub fn activate(vt: &VTAccessor, number: VtNumber, mode: Option<Mode>) -> io::Result<()> {
     let target = SwitchVtTarget {
-        number: *number as _,
+        number: number.as_int() as _,
         mode: mode.unwrap_or_default(),
     };
 
@@ -132,4 +135,13 @@ pub fn activate(vt: &VTAccessor, number: VtNumber, mode: Option<Mode>) -> io::Re
     };
 
     Ok(())
+}
+
+// Clear
+
+impl VTAccessor {
+    pub fn clear(&self) -> io::Result<()> {
+        write(&self.0, b"\x1B[H\x1B[2J")?;
+        Ok(())
+    }
 }

@@ -2,10 +2,9 @@
 pub mod context;
 mod pam;
 mod tty;
+
 pub mod users;
 
-use context::{LoginContext, SessionClass};
-use pam::{CredentialsOP, PamDisplay};
 pub use tty::control::RenderMode as VtRenderMode;
 
 use anyhow::{Context, Result};
@@ -14,7 +13,12 @@ use rustix::process;
 use crate::{
     APP_NAME,
     environment::{Env, EnvRecipient},
-    login::users::UserInfoProvider,
+    login::{
+        context::{LoginContext, Seat, SessionClass},
+        pam::{CredentialsOP, PamDisplay},
+        tty::{ActiveVT, VtNumber},
+        users::UserInfoProvider,
+    },
     session::{
         manager::{SessionManager, SessionType},
         metadata::SessionMetadata,
@@ -23,7 +27,7 @@ use crate::{
 
 // NOTE: while technically PAM can query for a username
 // for now we work around that
-fn login<T: SessionType>(
+fn login_worker<T: SessionType>(
     display: impl PamDisplay,
 
     user_info_provider: impl UserInfoProvider,
@@ -31,6 +35,8 @@ fn login<T: SessionType>(
     username: Option<&str>,
 
     inherit_env: Env,
+    seat: Seat,
+    vt_number: VtNumber,
 
     session_manager: SessionManager<T>,
     session_class: SessionClass,
@@ -48,7 +54,7 @@ fn login<T: SessionType>(
     pam.credentials(CredentialsOP::Establish)?;
 
     let user_info = user_info_provider.query(&pam.get_username()?)?;
-    let user_switch = user_info.as_user_id();
+    let switch_user = user_info.as_user_id();
 
     process::setsid().context("Failed to become a session leader process")?;
 
@@ -62,7 +68,12 @@ fn login<T: SessionType>(
     pam.open_session()?;
     let env = pam.get_env()?;
 
-    let context = LoginContext::from_env(env, Some(user_switch))?;
+    let terminal =
+        ActiveVT::new(vt_number, T::VT_RENDER_MODE).context("Failed to provision an active VT")?;
+
+    let context = LoginContext::new(env, seat, terminal, switch_user)
+        .context("Cannot establish a login context")?;
+
     let session = session_manager.spawn_session(context, session_metadata.executable)?;
 
     let exit_reason = session.join()?;

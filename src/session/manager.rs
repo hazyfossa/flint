@@ -2,12 +2,7 @@ use anyhow::{Context, Result};
 use serde::{Deserialize, de::DeserializeOwned};
 use shrinkwraprs::Shrinkwrap;
 
-use std::{
-    any::Any,
-    path::{Path, PathBuf},
-    process::Command,
-    sync::mpsc,
-};
+use std::{any::Any, path::PathBuf, sync::mpsc};
 
 use super::metadata::SessionMetadataLookup;
 use crate::{
@@ -54,10 +49,6 @@ pub struct SessionContext {
 }
 
 impl SessionContext {
-    pub fn command(&self, program: &Path) -> Command {
-        self.login_context.command(program)
-    }
-
     pub fn persist(&mut self, resource: Box<dyn Any>) {
         self.resources.push(resource);
     }

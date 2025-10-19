@@ -179,7 +179,7 @@ fn spawn_server(
     // Ensure that Xorg always starts non-elevated or bypass Xorg.wrap entirely
     let mut command = context.command(path);
     command
-        .arg(format!("vt{}", context.vt.to_string()))
+        .arg(format!("vt{}", context.terminal.number.to_string()))
         .args(["-seat".into(), context.seat.serialize()])
         .args(["-auth".into(), authority.into_os_string()])
         .args(["-nolisten", "tcp"])
@@ -205,7 +205,7 @@ impl manager::SessionType for Session {
     type EnvDiff = (Display, ClientAuthorityEnv, WindowPath);
 
     fn setup_session(config: &Config, context: &mut SessionContext) -> Result<Self::EnvDiff> {
-        let window_path = WindowPath::previous_plus_vt(&context.env, &context.vt)?;
+        let window_path = WindowPath::previous_plus_vt(&context.env, &context.terminal.number)?;
 
         let authority_manager = XAuthorityManager::new(context, config.lock_authority)
             .context("Failed to setup authority manager")?;

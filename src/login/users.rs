@@ -1,3 +1,5 @@
+use std::path::PathBuf;
+
 use anyhow::Result;
 
 use crate::environment::{Env, EnvContainer};
@@ -7,6 +9,7 @@ pub struct UserInfo {
     username: String,
     uid: u32,
     gid: u32,
+    home: PathBuf,
 }
 
 pub struct UserID {
