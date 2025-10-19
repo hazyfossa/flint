@@ -141,11 +141,14 @@ impl<T: SessionType> SessionManager<T> {
     ) -> Result<process::Child> {
         let metadata = self.lookup_metadata(name)?;
 
+        // TODO: should we set env to this or the SessionTypeID?
+        let display_name = metadata.display_name.unwrap_or(name.to_string());
+
         context.env = context
             .env
             .set(class)
-            .set(SessionNameEnv(metadata.name.clone()))
-            .set(SessionCompositionEnv::simple(metadata.name))
+            .set(SessionNameEnv(display_name.clone()))
+            .set(SessionCompositionEnv::simple(display_name))
             .set(SessionTypeEnv(T::XDG_TYPE.to_string()));
 
         T::spawn_session(&self.config, metadata.executable, context)

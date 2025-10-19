@@ -124,7 +124,7 @@ impl metadata::SessionMetadataLookup for Session {
         SessionMap::new().update(
             "shell".to_string(),
             SessionMetadata {
-                name: "Shell".to_string(),
+                display_name: None,
                 description: Some("Default shell as set for the target user".to_string()),
                 executable: PathBuf::from("<set_externally>"),
             },

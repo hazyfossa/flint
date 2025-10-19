@@ -1,7 +1,9 @@
-#![allow(dead_code)]
 mod converse;
-mod types;
 pub use converse::PamDisplay;
+
+mod types;
+pub use types::CredentialsOP;
+use types::{FlagsBuilder, flags};
 
 use anyhow::{Result, anyhow, bail};
 use libc::c_void;
@@ -13,10 +15,9 @@ use std::{
     ptr,
 };
 
-use crate::{
-    environment::{Env, EnvRecipient},
-    pam::types::{CredentialsOP, FlagsBuilder, flags},
-};
+use crate::environment::{Env, EnvRecipient};
+
+// TODO: RAII
 
 pub struct PAM<'a> {
     handle: &'a mut PamHandle,
@@ -44,7 +45,9 @@ impl PAM<'_> {
     pub fn new(
         service_name: &str,
         display: impl PamDisplay,
-        single_user: Option<&str>,
+
+        // If None, PAM will query for it via prompt() on PamDisplay
+        username: Option<&str>,
 
         // NOTE: i did not find any reason for this flag to be configurable per-call
         // however, that can trivially be done
@@ -54,7 +57,7 @@ impl PAM<'_> {
 
         let conversation = converse::PamConversationHandler::with_display(display).pass_to_pam();
 
-        match pam_sys::start(service_name, single_user, &conversation, handle as _) {
+        match pam_sys::start(service_name, username, &conversation, handle as _) {
             PamReturnCode::SUCCESS => Ok(Self {
                 _conversation: conversation,
 
@@ -86,7 +89,7 @@ impl PAM<'_> {
         ret
     }
 
-    pub fn acct_mgmt(&mut self, require_auth_token: bool) -> Result<()> {
+    pub fn assert_account_is_valid(&mut self, require_auth_token: bool) -> Result<()> {
         let flags = FlagsBuilder::new()
             .set_if(self.silent, flags::SILENT)
             .set_if(require_auth_token, flags::DISALLOW_NULL_AUTHTOK)
@@ -129,7 +132,7 @@ impl PAM<'_> {
         ret
     }
 
-    pub fn get_user(&mut self) -> Result<String> {
+    pub fn get_username(&mut self) -> Result<String> {
         let mut p: *const c_char = ptr::null_mut();
         pam_call!(let ret = self.pam_get_user(&mut p, ptr::null()));
         ret.map(|_| (unsafe { CStr::from_ptr(p) }).to_str().unwrap().to_string())
@@ -141,11 +144,10 @@ impl PAM<'_> {
         // or find a lossless way from CStr to OsStr and copy the one from std
         todo!()
     }
-}
 
-impl Drop for PAM<'_> {
-    fn drop(&mut self) {
-        pam_call!(let _whatever = self.pam_end(self.last_code as i32));
+    pub fn end(mut self) -> Result<()> {
+        pam_call!(let ret = self.pam_end(self.last_code as i32));
+        ret
     }
 }
 

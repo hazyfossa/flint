@@ -1,5 +1,5 @@
 mod environment;
-mod pam;
+mod login;
 mod session;
 #[allow(dead_code)]
 mod utils;
@@ -20,6 +20,8 @@ use crate::{
         runtime_dir::{self, RuntimeDir},
     },
 };
+
+pub const APP_NAME: &str = "flint";
 
 fn list<Session: SessionType>(config: &Config) -> Result<()> {
     let manager = SessionManager::<Session>::new_from_config(config)?;
@@ -89,12 +91,12 @@ fn main() -> Result<()> {
     let xdg_context = xdg::BaseDirectories::new();
 
     runtime_dir::current.init(
-        RuntimeDir::create(&xdg_context, "flint").context("Failed to create runtime directory")?,
+        RuntimeDir::create(&xdg_context, APP_NAME).context("Failed to create runtime directory")?,
     )?;
 
     let mut args = Arguments::from_env();
 
-    let config = Config::from_args(&mut args, "/etc/flint.toml")?;
+    let config = Config::from_args(&mut args, &format!("/etc/{APP_NAME}.toml"))?;
 
     match args.subcommand()? {
         Some(ref subcommand) => cli(subcommand, args, config),

@@ -16,9 +16,8 @@ pub type SessionMap = HashMap<SessionTypeID, SessionMetadata>;
 
 #[derive(Clone, Deserialize)]
 pub struct SessionMetadata {
-    /// This is the "display" name
     /// If it is unset, SessionTypeID should be used instead
-    pub name: String,
+    pub display_name: Option<String>,
     pub description: Option<String>,
     pub executable: PathBuf,
 }
@@ -56,7 +55,7 @@ fn parse_freedesktop_file(file: &mut File) -> Result<SessionMetadata> {
         .into();
 
     Ok(SessionMetadata {
-        name: parsed.name.default,
+        display_name: Some(parsed.name.default),
         description: parsed.comment.map(|x| x.default),
         executable,
     })
@@ -113,7 +112,9 @@ impl<T: FreedesktopMetadata> SessionMetadataLookup for T {
 
 impl Display for SessionMetadata {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.name)?;
+        if let Some(display_name) = &self.display_name {
+            write!(f, "{}", display_name)?;
+        }
         if let Some(comment) = &self.description {
             write!(f, ": {}", comment)?;
         };

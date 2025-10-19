@@ -6,14 +6,14 @@ use crate::environment::{EnvContainer, prelude::*};
 #[derive(Shrinkwrap, Clone)]
 pub struct VtNumber(u16);
 
-impl_env!("XDG_VTNR", VtNumber);
-env_parser_auto!(VtNumber);
-
 impl From<u16> for VtNumber {
     fn from(value: u16) -> Self {
         Self(value)
     }
 }
+
+impl_env!("XDG_VTNR", VtNumber);
+env_parser_auto!(VtNumber);
 
 define_env!("XDG_SEAT", pub Seat(String));
 env_parser_auto!(Seat);
