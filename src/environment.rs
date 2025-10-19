@@ -5,15 +5,11 @@ use im::HashMap;
 
 pub mod prelude {
     pub use super::{Env, EnvParser, EnvVar};
-    pub use crate::{
-        define_env, env_parser_auto, env_parser_raw, impl_env, utils::misc::OsStringExt,
-    };
-    pub use std::ops::Deref;
+    pub use crate::{define_env, env_parser_auto, env_parser_raw, utils::misc::OsStringExt};
 }
 
-pub trait EnvVar: Sized + EnvParser {
+pub trait EnvVar: EnvParser {
     const KEY: &str;
-    type Bind<T>;
 }
 
 pub trait EnvParser: Sized {
@@ -59,7 +55,9 @@ macro_rules! env_parser_raw {
 macro_rules! define_env {
     ($key:expr, $vis:vis $struct_name:ident($inner:ty)) => {
         $vis struct $struct_name($inner);
-        impl_env!($key, $struct_name);
+        impl EnvVar for $struct_name {
+            const KEY: &str = $key;
+        }
     };
 }
 
@@ -72,30 +70,9 @@ macro_rules! define_env {
 macro_rules! impl_env {
     ($key:expr, $target:ident) => {
         paste::paste! {
-            impl EnvVar for $target {
-                const KEY: &str = $key;
-                type Bind<T> = [<EnvWith $target>]<T>;
-            }
-
-
-            pub struct [<EnvWith $target>] <T> {
-                inner: T,
-                // TODO: remove _ if we decide to proceed with this
-                [<_ $target:snake>]: $target
-            }
-
-
-
-            impl<T> Deref for [<EnvWith $target>]<T>
-            where
-                T: Deref<Target = Env>
-            {
-                type Target = T;
-                fn deref(&self) -> &Self::Target {
-                    &self.inner
-                }
-            }
-        }
+        impl EnvVar for $target {
+            const KEY: &str = $key;
+        }}
     };
 }
 

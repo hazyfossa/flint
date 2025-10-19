@@ -4,7 +4,7 @@ use anyhow::{Context, Result};
 use shrinkwraprs::Shrinkwrap;
 
 use crate::{
-    environment::{EnvContainer, prelude::*},
+    environment::{EnvContainer, EnvRecipient, prelude::*},
     login::UserInfo,
 };
 
@@ -17,7 +17,9 @@ impl From<u16> for VtNumber {
     }
 }
 
-impl_env!("XDG_VTNR", VtNumber);
+impl EnvVar for VtNumber {
+    const KEY: &str = "XDG_VTNR";
+}
 env_parser_auto!(VtNumber);
 
 define_env!("XDG_SEAT", pub Seat(String));
@@ -38,7 +40,9 @@ pub enum SessionClass {
     LockScreen,
 }
 
-impl_env!("XDG_SESSION_CLASS", SessionClass);
+impl EnvVar for SessionClass {
+    const KEY: &str = "XDG_SESSION_CLASS";
+}
 
 impl EnvParser for SessionClass {
     fn serialize(&self) -> std::ffi::OsString {
@@ -112,6 +116,7 @@ impl LoginContext {
             cmd.uid(switch_user.uid).gid(switch_user.gid);
         };
 
+        cmd.set_env(self.env.clone()).unwrap();
         cmd
     }
 }
