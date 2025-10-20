@@ -68,8 +68,7 @@ fn login_worker<T: SessionType>(
     pam.open_session()?;
     let env = pam.get_env()?;
 
-    let terminal =
-        ActiveVT::new(vt_number, T::VT_RENDER_MODE).context("Failed to provision an active VT")?;
+    let terminal = ActiveVT::new(vt_number).context("Failed to provision an active VT")?;
 
     let context = LoginContext::new(env, seat, terminal, switch_user)
         .context("Cannot establish a login context")?;

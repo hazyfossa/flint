@@ -132,6 +132,12 @@ impl<T: SessionType> SessionManager<T> {
             .spawn()
             .context("Failed to spawn main session executable")?;
 
+        builder
+            .context
+            .terminal
+            .activate(T::VT_RENDER_MODE)
+            .context("Failed to swtich to session VT")?;
+
         // TODO: connect child.wait to shutdown_tx
 
         Ok(builder.finish())

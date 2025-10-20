@@ -6,8 +6,10 @@ use std::{
 use anyhow::{Result, bail};
 use rustix::{
     io::{self, write},
-    ioctl,
+    ioctl, stdio,
 };
+
+// TODO: some OPs here are better defined as IntegerSetter, as they do not require a pointer
 
 use super::VtNumber;
 
@@ -113,35 +115,54 @@ impl Default for Mode {
     }
 }
 
-// Switch
+// Activate
 
 type IoSetActivateVT = ioctl::Setter<0x560F, SwitchVtTarget>;
-type IoWaitVT = ioctl::Setter<0x5607, VtNumber>;
+type IoWaitVT = ioctl::Setter<0x5607, u16>;
 
 struct SwitchVtTarget {
     number: u64,
     mode: Mode,
 }
 
-pub fn activate(vt: &VTAccessor, number: VtNumber, mode: Option<Mode>) -> io::Result<()> {
-    let target = SwitchVtTarget {
-        number: number.as_int() as _,
-        mode: mode.unwrap_or_default(),
-    };
+impl VTAccessor {
+    pub fn activate(&self, number: VtNumber, mode: Option<Mode>) -> io::Result<()> {
+        let target = SwitchVtTarget {
+            number: number.as_int() as _,
+            mode: mode.unwrap_or_default(),
+        };
 
-    unsafe {
-        ioctl::ioctl(&vt.0, IoSetActivateVT::new(target))?;
-        ioctl::ioctl(&vt.0, IoWaitVT::new(number))?;
-    };
+        unsafe {
+            ioctl::ioctl(&self.0, IoSetActivateVT::new(target))?;
+            ioctl::ioctl(&self.0, IoWaitVT::new(number.as_int()))?;
+        };
 
-    Ok(())
+        Ok(())
+    }
 }
 
-// Clear
+// Set as controlling tty
+
+type IoSetCtty = ioctl::IntegerSetter<0x540E>;
+
+impl VTAccessor {
+    pub fn set_as_controlling_tty(&self) -> io::Result<()> {
+        unsafe { ioctl::ioctl(&self.0, IoSetCtty::new_usize(1)) }
+    }
+}
+
+// Other
 
 impl VTAccessor {
     pub fn clear(&self) -> io::Result<()> {
         write(&self.0, b"\x1B[H\x1B[2J")?;
+        Ok(())
+    }
+
+    pub fn bind_stdio(&self) -> io::Result<()> {
+        stdio::dup2_stdin(&self.0)?;
+        stdio::dup2_stdout(&self.0)?;
+        stdio::dup2_stderr(&self.0)?;
         Ok(())
     }
 }

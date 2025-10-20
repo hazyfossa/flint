@@ -2,17 +2,13 @@
 
 pub mod control;
 
-use std::{
-    os::fd::{AsFd, AsRawFd, BorrowedFd, FromRawFd, OwnedFd},
-    process::Command,
-};
+use std::os::fd::{AsRawFd, BorrowedFd, FromRawFd, OwnedFd};
 
 use anyhow::{Context, Result};
-use command_fds::{CommandFdExt, FdMapping};
 use rustix::fs::{Mode, OFlags};
 
 pub use crate::login::context::VtNumber;
-use control::{RenderMode, VTAccessor, activate};
+use control::{RenderMode, VTAccessor};
 
 impl VtNumber {
     fn to_tty_string(&self) -> String {
@@ -25,17 +21,12 @@ unsafe fn clone_fd<'a>(fd: BorrowedFd<'a>) -> OwnedFd {
 }
 
 pub struct ActiveVT {
-    settings: VTAccessor,
+    accessor: VTAccessor,
     pub number: VtNumber,
 }
 
 impl ActiveVT {
-    // This function will do everything required for the provided `fd`
-    // to become an active VT under `number`
-    // including switching away from the currently active VT
-    //
-    // Can cause screen flicker
-    pub fn new(number: VtNumber, render_mode: RenderMode) -> Result<Self> {
+    pub fn new(number: VtNumber) -> Result<Self> {
         let fd = rustix::fs::open(
             format!("/dev/{}", number.to_tty_string()),
             OFlags::RDWR | OFlags::NOCTTY,
@@ -45,27 +36,17 @@ impl ActiveVT {
 
         let accessor = VTAccessor::from_fd(fd)?;
 
-        accessor
-            .set_render_mode(render_mode)
-            .context("failed to set VT render mode")?;
+        Ok(Self { accessor, number })
+    }
 
-        accessor.clear().context("Failed to clear terminal")?;
+    pub fn set_as_current(&self) -> Result<()> {
+        self.accessor.bind_stdio().context("Failed to bind stdio")?;
 
-        let currently_active: VtNumber = accessor
-            .get_common_state()
-            .context("Failed to query active VT state")?
-            .active_number
-            .into();
+        self.accessor
+            .set_as_controlling_tty()
+            .context("Failed to set as controlling tty")?;
 
-        if currently_active != number {
-            // TODO: is changing general mode from default (None) useful?
-            activate(&accessor, number, None).context("Failed to activate VT")?;
-        }
-
-        Ok(Self {
-            settings: accessor,
-            number,
-        })
+        Ok(())
     }
 
     pub fn current(number: VtNumber) -> Result<Self> {
@@ -73,29 +54,35 @@ impl ActiveVT {
         // Is this appropriate for stdin?
         let stdin = unsafe { OwnedFd::from_raw_fd(0) };
 
-        // TODO: is this enough? Should we activate just in case?
-
         Ok(Self {
-            settings: VTAccessor::from_fd(stdin)?,
+            accessor: VTAccessor::from_fd(stdin)?,
             number,
         })
     }
 
-    pub fn bind<'a>(&self, command: &'a mut Command) -> Result<&'a mut Command> {
-        // TODO: consider moving this logic to session leader child
-        command.fd_mappings(
-            [0, 1, 2]
-                .iter()
-                // TODO: safety
-                .map(|i| unsafe {
-                    FdMapping {
-                        parent_fd: clone_fd(self.settings.as_fd()),
-                        child_fd: *i,
-                    }
-                })
-                .collect(),
-        )?;
-        // TODO: set as controlling tty
-        Ok(command)
+    // NOTE: can cause screen flicker due to VT switching
+    // if another VT is active
+    pub fn activate(&self, render_mode: RenderMode) -> Result<()> {
+        self.accessor
+            .set_render_mode(render_mode)
+            .context("failed to set VT render mode")?;
+
+        self.accessor.clear().context("Failed to clear terminal")?;
+
+        let currently_active: VtNumber = self
+            .accessor
+            .get_common_state()
+            .context("Failed to query active VT state")?
+            .active_number
+            .into();
+
+        if currently_active != self.number {
+            // TODO: is changing general mode from default (None) useful?
+            self.accessor
+                .activate(self.number, None)
+                .context("Failed to activate VT")?;
+        }
+
+        Ok(())
     }
 }

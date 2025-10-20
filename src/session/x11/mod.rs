@@ -69,7 +69,7 @@ impl DisplayReceiver {
         Ok((Self(display_rx), command))
     }
 
-    fn wait(self) -> Result<Option<Display>> {
+    fn wait_for_display(self) -> Result<Display> {
         let mut reader = BufReader::new(self.0);
         let mut display_buf = String::new();
 
@@ -77,18 +77,16 @@ impl DisplayReceiver {
             .read_line(&mut display_buf)
             .context("Failed to read display number")?;
 
-        let display = if display_buf.is_empty() {
-            None
+        if display_buf.is_empty() {
+            Err(anyhow!("Internal Xorg error. See logs above for details."))
         } else {
-            Some(Display::new(
+            Ok(Display::new(
                 display_buf
                     .trim_end()
                     .parse()
                     .context("Xorg provided invalid display number")?,
             ))
-        };
-
-        Ok(display)
+        }
     }
 }
 
@@ -133,9 +131,11 @@ impl XWatcher {
             .wait()
             .expect("Xorg not started, yet attaching logger");
 
-        self.shutdown_tx
-            .send(format!("Xorg exited with {exit_status}"))
-            .expect("Cannot send clean shutdown signal, aborting");
+        // NOTE: we ignore errors on send, because if the other end is closed
+        // we are already undergoing shutdown, most likely due to an error
+        let _ = self
+            .shutdown_tx
+            .send(format!("Xorg exited with {exit_status}"));
     }
 
     fn start_thread(self) -> Result<JoinHandle<()>> {
@@ -223,14 +223,12 @@ impl manager::SessionType for Session {
         .start_thread()?;
 
         // NOTE: this will block until the X server is ready
-        if let Some(display) = future_display.wait()? {
-            let client_authority = authority_manager
-                .setup_client(&display)
-                .context("failed to define client authority")?;
+        let display = future_display.wait_for_display()?;
 
-            Ok((display, client_authority, window_path))
-        } else {
-            Err(anyhow!("Internal Xorg error. See logs above for details."))
-        }
+        let client_authority = authority_manager
+            .setup_client(&display)
+            .context("failed to define client authority")?;
+
+        Ok((display, client_authority, window_path))
     }
 }
