@@ -1,9 +1,7 @@
 // These are redefinitions of types in pam_sys::types
 // that are (subjectively) easier to work with
 
-use libc::c_int;
-
-type Flag = c_int;
+type Flag = i32;
 // Combined flags are just a union
 type Flags = Flag;
 

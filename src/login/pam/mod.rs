@@ -6,11 +6,10 @@ pub use types::CredentialsOP;
 use types::{FlagsBuilder, flags};
 
 use anyhow::{Result, anyhow, bail};
-use libc::c_void;
 use pam_sys::{PamConversation, PamHandle, PamItemType, PamReturnCode};
 
 use std::{
-    ffi::{CStr, CString},
+    ffi::{CStr, CString, c_void},
     os::{raw::c_char, unix::ffi::OsStringExt},
     ptr,
 };

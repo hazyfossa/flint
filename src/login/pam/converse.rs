@@ -3,6 +3,8 @@ use pam_sys::{PamConversation, PamMessage, PamMessageStyle, PamResponse, PamRetu
 use std::{error::Error, ffi::CStr, mem, pin::Pin};
 use zeroize::Zeroize;
 
+// TODO: try not to bind via libc here, if possible
+
 pub struct ConversationError;
 
 impl<E: Error> From<E> for ConversationError {
