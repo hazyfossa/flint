@@ -24,25 +24,30 @@ impl manager::SessionType for Session {
     }
 }
 
+fn special_meta_shell() -> SessionMetadata {
+    SessionMetadata {
+        name: "shell".to_string(),
+        description: Some("Default shell as set for the target user".to_string()),
+        executable: PathBuf::from("<set_externally>"),
+    }
+}
+
 impl metadata::SessionMetadataLookup for Session {
-    fn lookup_metadata(_name: &str) -> Result<SessionMetadata> {
-        Err(anyhow!(
-            r#"Arbitrary executables are not supported as a tty session.
+    fn lookup_metadata(name: &str) -> Result<SessionMetadata> {
+        match name {
+            "shell" => Ok(special_meta_shell()),
+
+            _ => Err(anyhow!(
+                r#"Arbitrary executables are not supported as a tty session.
             Create a new entry in the config."#
-        ))
+            )),
+        }
     }
 
     fn lookup_metadata_all() -> SessionMap {
         // NOTE: at least debian provides a list of valid shells
 
         // This is a hack
-        SessionMap::new().update(
-            "shell".to_string(),
-            SessionMetadata {
-                name: "shell".to_string(),
-                description: Some("Default shell as set for the target user".to_string()),
-                executable: PathBuf::from("<set_externally>"),
-            },
-        )
+        SessionMap::new().update("shell".to_string(), special_meta_shell())
     }
 }
