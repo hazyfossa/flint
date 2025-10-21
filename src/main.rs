@@ -1,5 +1,6 @@
 mod environment;
 mod login;
+mod plymouth;
 mod session;
 mod utils;
 

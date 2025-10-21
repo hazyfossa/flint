@@ -160,8 +160,6 @@ mod macro_scope {
 }
 
 pub mod bufio {
-    // NOTE: this is inflexible for now, and that is on purpose
-
     use anyhow::Result;
     use binrw::{
         BinRead, BinWrite,
@@ -170,28 +168,32 @@ pub mod bufio {
     };
     pub use bytes::{Buf, BufMut};
 
-    pub trait BufIO: Sized {
-        type Error;
+    pub trait BufRead: Sized {
+        fn read_buf(buf: &mut impl Buf) -> Result<Self>;
+    }
 
-        fn read(buf: &mut impl Buf) -> Result<Self, Self::Error>;
-        fn write(&self, buf: &mut impl BufMut) -> Result<(), Self::Error>;
+    pub trait BufWrite {
+        fn write_buf(&self, buf: &mut impl BufMut) -> Result<()>;
     }
 
     // NOTE: this implementation effectively prohibits using Seek'ing features of binrw
-    impl<T> BufIO for T
+    impl<T> BufRead for T
     where
-        T: BinRead + ReadEndian + BinWrite + WriteEndian,
+        T: BinRead + ReadEndian,
         for<'a> <T as BinRead>::Args<'a>: Default,
+    {
+        fn read_buf(buf: &mut impl Buf) -> Result<Self> {
+            Ok(Self::read(&mut NoSeek::new(buf.reader()))?)
+        }
+    }
+
+    impl<T> BufWrite for T
+    where
+        T: BinWrite + WriteEndian,
         for<'a> <T as BinWrite>::Args<'a>: Default,
     {
-        type Error = binrw::Error;
-
-        fn read(buf: &mut impl Buf) -> Result<Self, Self::Error> {
-            Self::read(&mut NoSeek::new(buf.reader()))
-        }
-
-        fn write(&self, buf: &mut impl BufMut) -> Result<(), Self::Error> {
-            self.write(&mut NoSeek::new(buf.writer()))
+        fn write_buf(&self, buf: &mut impl BufMut) -> Result<()> {
+            Ok(self.write(&mut NoSeek::new(buf.writer()))?)
         }
     }
 }
