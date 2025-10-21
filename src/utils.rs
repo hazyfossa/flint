@@ -122,9 +122,7 @@ pub mod runtime_dir {
                     "Runtime directory is insecure: expecting permissions `077`, got {permissions}"
                 ))
             } else {
-                Ok(Self {
-                    path: path.to_path_buf(),
-                })
+                Self::new(path.to_path_buf())
             }
         }
 
@@ -157,6 +155,43 @@ mod macro_scope {
     ($($body:tt)*) => {
         macro_rules! __with_dollar_sign { $($body)* }
         __with_dollar_sign!($);
+        }
+    }
+}
+
+pub mod bufio {
+    // NOTE: this is inflexible for now, and that is on purpose
+
+    use anyhow::Result;
+    use binrw::{
+        BinRead, BinWrite,
+        io::NoSeek,
+        meta::{ReadEndian, WriteEndian},
+    };
+    pub use bytes::{Buf, BufMut};
+
+    pub trait BufIO: Sized {
+        type Error;
+
+        fn read(buf: &mut impl Buf) -> Result<Self, Self::Error>;
+        fn write(&self, buf: &mut impl BufMut) -> Result<(), Self::Error>;
+    }
+
+    // NOTE: this implementation effectively prohibits using Seek'ing features of binrw
+    impl<T> BufIO for T
+    where
+        T: BinRead + ReadEndian + BinWrite + WriteEndian,
+        for<'a> <T as BinRead>::Args<'a>: Default,
+        for<'a> <T as BinWrite>::Args<'a>: Default,
+    {
+        type Error = binrw::Error;
+
+        fn read(buf: &mut impl Buf) -> Result<Self, Self::Error> {
+            Self::read(&mut NoSeek::new(buf.reader()))
+        }
+
+        fn write(&self, buf: &mut impl BufMut) -> Result<(), Self::Error> {
+            self.write(&mut NoSeek::new(buf.writer()))
         }
     }
 }
