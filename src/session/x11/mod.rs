@@ -229,6 +229,8 @@ impl manager::SessionType for Session {
             .setup_client(&display)
             .context("failed to define client authority")?;
 
+        authority_manager.finish(context)?;
+
         Ok((display, client_authority, window_path))
     }
 }

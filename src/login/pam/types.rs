@@ -1,5 +1,7 @@
 // These are redefinitions of types in pam_sys::types
 // that are (subjectively) easier to work with
+#![allow(dead_code)]
+pub use pam_sys::types::PamItemType;
 
 type Flag = i32;
 // Combined flags are just a union

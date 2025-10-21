@@ -1,5 +1,5 @@
+pub use binrw::BinWrite;
 use binrw::binrw;
-pub use binrw::{BinRead, BinWrite};
 use zeroize::{Zeroize, ZeroizeOnDrop};
 
 pub type Result<T> = std::result::Result<T, binrw::Error>;

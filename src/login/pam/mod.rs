@@ -2,11 +2,11 @@ mod converse;
 pub use converse::PamDisplay;
 
 mod types;
-pub use types::CredentialsOP;
+pub use types::{CredentialsOP, PamItemType};
 use types::{FlagsBuilder, flags};
 
 use anyhow::{Result, anyhow, bail};
-use pam_sys::{PamConversation, PamHandle, PamItemType, PamReturnCode};
+use pam_sys::{PamConversation, PamHandle, PamReturnCode};
 
 use std::{
     ffi::{CStr, CString, c_void},

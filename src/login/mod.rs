@@ -1,8 +1,6 @@
-#![allow(dead_code)]
 pub mod context;
 mod pam;
 mod tty;
-
 pub mod users;
 
 pub use tty::control::RenderMode as VtRenderMode;
@@ -15,7 +13,7 @@ use crate::{
     environment::{Env, EnvRecipient},
     login::{
         context::{LoginContext, Seat, SessionClass},
-        pam::{CredentialsOP, PamDisplay},
+        pam::{CredentialsOP, PamDisplay, PamItemType},
         tty::{ActiveVT, VtNumber},
         users::UserInfoProvider,
     },
@@ -25,6 +23,7 @@ use crate::{
     },
 };
 
+#[allow(dead_code)]
 // NOTE: while technically PAM can query for a username
 // for now we work around that
 fn login_worker<T: SessionType>(
@@ -69,6 +68,8 @@ fn login_worker<T: SessionType>(
     let env = pam.get_env()?;
 
     let terminal = ActiveVT::new(vt_number).context("Failed to provision an active VT")?;
+    pam.set_item(PamItemType::TTY, &vt_number.to_tty_string())?;
+    let env = env.set(vt_number);
 
     let context = LoginContext::new(env, seat, terminal, switch_user)
         .context("Cannot establish a login context")?;

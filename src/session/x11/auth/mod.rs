@@ -1,5 +1,3 @@
-#![allow(dead_code)] // TODO
-
 mod encoding;
 use encoding::*;
 
@@ -26,7 +24,6 @@ use crate::{
     environment::prelude::*, session::manager::SessionContext, utils::runtime_dir::RuntimeDir,
 };
 
-// TODO: raw mode
 define_env!("XAUTHORITY", pub ClientAuthorityEnv(OsString));
 env_parser_raw!(ClientAuthorityEnv);
 
@@ -128,7 +125,7 @@ impl XAuthorityManager {
         Ok(ClientAuthorityEnv(path.into()))
     }
 
-    fn finish(self, context: &mut SessionContext) -> Result<()> {
+    pub fn finish(self, context: &mut SessionContext) -> Result<()> {
         if let Some(switch_user) = &context.user {
             fs::chown(
                 self.directory.clone(),

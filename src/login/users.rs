@@ -6,10 +6,10 @@ use crate::environment::{Env, EnvContainer};
 
 // NOTE: this is a stub
 pub struct UserInfo {
-    username: String,
+    _username: String,
     uid: u32,
     gid: u32,
-    home: PathBuf,
+    _home: PathBuf,
 }
 
 pub struct UserID {

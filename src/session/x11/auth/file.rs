@@ -1,8 +1,8 @@
-use super::encoding::{self, BinRead, BinWrite, Entry};
+use super::encoding::{self, BinWrite, Entry};
 
 use std::{
     fs::{File, OpenOptions},
-    io::{self, Seek},
+    io,
     os::unix::fs::OpenOptionsExt,
     path::Path,
 };
@@ -15,21 +15,6 @@ pub struct AuthorityFile {
 }
 
 impl AuthorityFile {
-    pub fn from_existing(file: File, lock: Lock) -> io::Result<Self> {
-        Ok(Self {
-            file,
-            _lock: Some(lock),
-        })
-    }
-
-    /// # Safety
-    /// the caller should ensure no other process will open the same file
-    /// Note that for files created by other programs, this is generraly impossible to guarantee
-    /// Thus, this api is not recommended, unless you are absolutely sure what you're doing
-    pub unsafe fn from_existing_unlocked(file: File) -> Self {
-        Self { file, _lock: None }
-    }
-
     fn create_inner(path: &Path) -> io::Result<File> {
         OpenOptions::new()
             .read(true)
@@ -56,23 +41,19 @@ impl AuthorityFile {
         Ok(Self { file, _lock: None })
     }
 
-    pub fn rewind(&mut self) -> io::Result<()> {
-        self.file.rewind()
-    }
+    // pub fn get(&mut self) -> encoding::Result<Vec<Entry>> {
+    //     let mut entries = Vec::new();
 
-    pub fn get(&mut self) -> encoding::Result<Vec<Entry>> {
-        let mut entries = Vec::new();
+    //     loop {
+    //         match Entry::read(&mut self.file) {
+    //             Ok(entry) => entries.push(entry),
+    //             Err(e) if e.is_eof() => break,
+    //             Err(e) => return Err(e),
+    //         }
+    //     }
 
-        loop {
-            match Entry::read(&mut self.file) {
-                Ok(entry) => entries.push(entry),
-                Err(e) if e.is_eof() => break,
-                Err(e) => return Err(e),
-            }
-        }
-
-        Ok(entries)
-    }
+    //     Ok(entries)
+    // }
 
     pub fn set(&mut self, authority: impl IntoIterator<Item = Entry>) -> encoding::Result<()> {
         for entry in authority {

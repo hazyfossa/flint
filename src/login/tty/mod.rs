@@ -11,7 +11,7 @@ pub use crate::login::context::VtNumber;
 use control::{RenderMode, VTAccessor};
 
 impl VtNumber {
-    fn to_tty_string(&self) -> String {
+    pub fn to_tty_string(&self) -> String {
         format!("tty{}", self.to_string())
     }
 }

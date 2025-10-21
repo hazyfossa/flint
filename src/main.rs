@@ -1,7 +1,6 @@
 mod environment;
 mod login;
 mod session;
-#[allow(dead_code)]
 mod utils;
 
 use anyhow::{Context, Result, anyhow};
