@@ -37,6 +37,7 @@ macro_rules! vt_property {
         $model:ty,
         get = $opcode_get:expr
         $(, set = $opcode_set:expr)?
+
     ) => {
         paste::paste! {
         impl VTAccessor {
@@ -45,7 +46,12 @@ macro_rules! vt_property {
             }
 
             $(pub fn [<set_ $model:snake>](&self, value: $model) -> io::Result<()> {
-                unsafe { ioctl::ioctl(&self.0, ioctl::Setter::<$opcode_set, $model>::new(value)) }
+                unsafe {
+                    ioctl::ioctl(
+                        &self.0,
+                        ioctl::IntegerSetter::<$opcode_set>::new_usize(value as _)
+                    )
+                }
             })?
         }
     }};
@@ -88,6 +94,7 @@ vt_property!(KeyboardMode, get = 0x4B44, set = 0x4B45);
 
 // VT Mode
 
+// TODO
 #[repr(u8)]
 pub enum SwitchMode {
     Auto,    // auto vt switching
