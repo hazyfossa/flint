@@ -28,7 +28,7 @@ impl define::SessionType for Session {
 
     type ManagerConfig = Config;
 
-    fn setup_session(
+    async fn setup_session(
         _config: &Config,
         _context: &mut SessionContext,
         _executable: PathBuf,

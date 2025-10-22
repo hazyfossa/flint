@@ -1,11 +1,14 @@
 mod auth;
 
 use anyhow::{Context, Result, anyhow};
-use tokio::process::Command;
+use tokio::{
+    io::{AsyncBufReadExt, BufReader},
+    net::unix::pipe,
+    process::Command,
+};
 
 use std::{
     ffi::OsString,
-    io::{BufRead, BufReader, PipeReader, pipe},
     path::{Path, PathBuf},
 };
 
@@ -51,24 +54,27 @@ impl EnvParser for Display {
     }
 }
 
-struct DisplayReceiver(PipeReader);
+struct DisplayReceiver(pipe::Receiver);
 
 impl DisplayReceiver {
     fn setup<'a>(fd_ctx: &mut FdContext, command: &'a mut Command) -> Result<Self> {
-        let (display_rx, display_tx) = pipe().context("Failed to open pipe for display fd")?;
-        let display_tx_passed = fd_ctx.pass(display_tx.into())?;
+        let (display_tx, display_rx) =
+            pipe::pipe().context("Failed to open pipe for display fd")?;
+
+        let display_tx_passed = fd_ctx.pass(display_tx.into_blocking_fd()?)?;
 
         command.args(["-displayfd", &display_tx_passed.num().to_string()]);
 
         Ok(Self(display_rx))
     }
 
-    fn wait_for_display(self) -> Result<Display> {
+    async fn display(self) -> Result<Display> {
         let mut reader = BufReader::new(self.0);
         let mut display_buf = String::new();
 
         reader
             .read_line(&mut display_buf)
+            .await
             .context("Failed to read display number")?;
 
         if display_buf.is_empty() {
@@ -149,7 +155,7 @@ impl define::SessionType for Session {
 
     type ManagerConfig = Config;
 
-    fn setup_session(
+    async fn setup_session(
         config: &Config,
         context: &mut SessionContext,
         executable: PathBuf,
@@ -166,7 +172,7 @@ impl define::SessionType for Session {
         let future_display = spawn_server(&config.xorg_path, server_authority, context)?;
 
         // NOTE: this will block until the X server is ready
-        let display = future_display.wait_for_display()?;
+        let display = future_display.display().await?;
 
         let client_authority = authority_manager
             .setup_client(&display)

@@ -75,7 +75,9 @@ async fn login_worker<T: SessionType>(
     let context = LoginContext::new(env, seat, terminal, user_id)
         .context("Cannot establish a login context")?;
 
-    let session = session_manager.spawn_session(context, session_metadata.executable)?;
+    let session = session_manager
+        .spawn_session(context, session_metadata.executable)
+        .await?;
 
     let exit_reason = session.join().await?;
 

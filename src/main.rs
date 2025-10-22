@@ -30,10 +30,8 @@ async fn run<Session: SessionType>(config: &Config, mut args: Arguments) -> Resu
 
     let name: String = args.free_from_str().map_err(|_| {
         anyhow!(
-            "
-                No session name provided.
-                Use --list to list available sessions.    
-                "
+            "No session name provided.
+            Use --list to list available sessions."
         )
     })?;
 
@@ -42,14 +40,14 @@ async fn run<Session: SessionType>(config: &Config, mut args: Arguments) -> Resu
 
     let session = manager
         .spawn_session(context, metadata.executable)
+        .await
         .context("Failed to start session")?;
 
     let exit_reason = session.join().await?;
 
-    println!(
-        "Session exited.
-        Caused by: {exit_reason}"
-    );
+    #[rustfmt::skip]
+    println!("Session exited.
+    Caused by: {exit_reason}");
 
     Ok(())
 }

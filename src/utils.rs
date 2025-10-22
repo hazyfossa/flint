@@ -57,10 +57,10 @@ pub mod fd {
 
     impl CommandFdCtxExt for Command {
         fn with_fd_context(&mut self, fd_ctx: FdContext) -> &mut Self {
-            self.fd_mappings(fd_ctx.mappings).expect(
-                "Fd collision at context detected at runtime.
-                Check if any manual mappings overlap with free_fd_source.",
-            )
+            // if you see this error,
+            // check if any manual mappings overlap with free_fd_source.
+            self.fd_mappings(fd_ctx.mappings)
+                .expect("Fd collision with context detected at runtime.")
         }
     }
 

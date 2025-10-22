@@ -29,7 +29,7 @@ pub trait SessionType: Sized + SessionMetadataLookup {
 
     const VT_RENDER_MODE: VtRenderMode = VtRenderMode::Graphics;
 
-    fn setup_session(
+    async fn setup_session(
         config: &Self::ManagerConfig,
         context: &mut SessionContext,
         executable: PathBuf,

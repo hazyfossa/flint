@@ -74,8 +74,6 @@ impl SessionContext {
         cmd.set_env(self.env.clone()).unwrap();
 
         let shutdown_tx = self.shutdown_tx.clone();
-
-        // TODO: optimize
         tokio::spawn(handle_session_subprocess(cmd, shutdown_tx));
 
         Ok(())
@@ -148,14 +146,14 @@ impl<T: SessionType> SessionManager<T> {
         })
     }
 
-    pub fn spawn_session(
+    pub async fn spawn_session(
         &self,
         context: LoginContext,
         executable: PathBuf,
     ) -> Result<SessionInstance> {
         let mut builder = SessionBuilder::new(context);
 
-        T::setup_session(&self.config, &mut builder, executable)?;
+        T::setup_session(&self.config, &mut builder, executable).await?;
 
         builder
             .terminal

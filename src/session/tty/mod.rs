@@ -19,7 +19,7 @@ impl define::SessionType for Session {
 
     const VT_RENDER_MODE: VtRenderMode = VtRenderMode::Text;
 
-    fn setup_session(
+    async fn setup_session(
         _config: &Config,
         context: &mut SessionContext,
         executable: PathBuf,
