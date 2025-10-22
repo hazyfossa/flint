@@ -110,10 +110,9 @@ pub mod runtime_dir {
 
     impl RuntimeDirManager {
         pub fn from_env(env: &Env) -> Result<Self> {
-            let path = &env
+            let path = &*env
                 .peek::<RuntimeDirEnv>()
-                .context("Environment does not provide a runtime directory")?
-                .0;
+                .context("Environment does not provide a runtime directory")?;
 
             let permissions = fs_err::metadata(&path)?.permissions().mode();
 
@@ -172,6 +171,7 @@ pub mod bufio {
         fn read_buf(buf: &mut impl Buf) -> Result<Self>;
     }
 
+    #[allow(dead_code)]
     pub trait BufWrite {
         fn write_buf(&self, buf: &mut impl BufMut) -> Result<()>;
     }

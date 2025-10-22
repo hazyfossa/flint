@@ -1,41 +1,21 @@
 use anyhow::{Context, Result};
-use serde::{Deserialize, de::DeserializeOwned};
+use rustix::process::{self, Signal};
+use serde::Deserialize;
 use shrinkwraprs::Shrinkwrap;
 
-use std::{any::Any, path::PathBuf, sync::mpsc};
-
-use super::metadata::SessionMetadataLookup;
-use crate::{
-    environment::{EnvContainer, EnvContainerPartial, EnvRecipient, prelude::*},
-    login::{VtRenderMode, context::LoginContext},
-    session::metadata::{SessionMap, SessionMetadata},
-    utils::config::Config,
+use std::{
+    any::Any, os::unix::process::CommandExt, path::PathBuf, process::Command, sync::mpsc, thread,
 };
 
-pub mod prelude {
-    pub use crate::{
-        login::context::VtNumber,
-        session::{
-            manager::{self, SessionContext},
-            metadata::{self, SessionMap, SessionMetadata},
-        },
-    };
-    pub use serde::Deserialize;
-}
-
-pub trait SessionType: Sized + SessionMetadataLookup {
-    const XDG_TYPE: &str;
-
-    type ManagerConfig: Default + DeserializeOwned;
-    type EnvDiff: EnvContainer;
-
-    const VT_RENDER_MODE: VtRenderMode = VtRenderMode::Graphics;
-
-    fn setup_session(
-        config: &Self::ManagerConfig,
-        context: &mut SessionContext,
-    ) -> Result<Self::EnvDiff>;
-}
+use crate::{
+    environment::{EnvContainer, EnvRecipient},
+    login::context::LoginContext,
+    session::{
+        define::SessionType,
+        metadata::{SessionMap, SessionMetadata},
+    },
+    utils::config::Config,
+};
 
 type ExitReason = String;
 
@@ -52,9 +32,44 @@ impl SessionContext {
     pub fn persist(&mut self, resource: Box<dyn Any>) {
         self.resources.push(resource);
     }
+
+    pub fn update_env<E: EnvContainer>(&mut self, variables: E) {
+        self.login_context.env = self.login_context.env.clone().merge(variables)
+    }
+
+    pub fn spawn(&self, mut cmd: Command) -> Result<()> {
+        // TODO: custom stream processing on stdio
+
+        if let Some(switch_user) = &self.user {
+            cmd.uid(switch_user.uid).gid(switch_user.gid);
+        }
+
+        unsafe {
+            cmd.pre_exec(|| {
+                process::set_parent_process_death_signal(Some(Signal::TERM))?;
+                Ok(())
+            });
+        }
+
+        cmd.set_env(self.env.clone()).unwrap();
+        let mut wait_token = cmd.spawn()?;
+
+        let shutdown_tx = self.shutdown_tx.clone();
+
+        // TODO: optimize
+        thread::spawn(move || {
+            let exit_status = wait_token.wait().unwrap();
+            shutdown_tx.send(format!("{:?} exited with {exit_status}", cmd.get_program()))
+        });
+
+        Ok(())
+    }
 }
 
-pub struct SessionBuilder {
+#[derive(Shrinkwrap)]
+#[shrinkwrap(mutable)]
+struct SessionBuilder {
+    #[shrinkwrap(main_field)]
     context: SessionContext,
     shutdown_rx: mpsc::Receiver<ExitReason>,
 }
@@ -123,17 +138,9 @@ impl<T: SessionType> SessionManager<T> {
     ) -> Result<SessionInstance> {
         let mut builder = SessionBuilder::new(context);
 
-        let session_env_diff = T::setup_session(&self.config, &mut builder.context)?;
-
-        let mut command = builder.context.command(&executable);
-        command.merge_env(session_env_diff.to_env()).unwrap();
-
-        let _child = command
-            .spawn()
-            .context("Failed to spawn main session executable")?;
+        T::setup_session(&self.config, &mut builder, executable)?;
 
         builder
-            .context
             .terminal
             .activate(T::VT_RENDER_MODE)
             .context("Failed to swtich to session VT")?;
@@ -153,44 +160,5 @@ impl<T: SessionType> SessionManager<T> {
 
     pub fn lookup_metadata_all(&self) -> SessionMap {
         self.entries.clone().union(T::lookup_metadata_all())
-    }
-}
-
-define_env!("XDG_SESSION_TYPE", pub SessionTypeEnv(String));
-env_parser_auto!(SessionTypeEnv);
-
-impl<T: SessionType> EnvContainerPartial for SessionManager<T> {
-    fn apply_as_container(&self, env: Env) -> Env {
-        env.set(SessionTypeEnv(T::XDG_TYPE.to_string()))
-    }
-}
-
-#[macro_export]
-macro_rules! session_type {
-    ($session_type:tt) => {
-        crate::session::$session_type::Session
-    };
-}
-
-#[macro_export]
-macro_rules! sessions {
-    ([$($session:tt),+]) => { // fn sessions([*session_types])
-        $( pub mod $session; )+
-
-        $crate::scope!{($all:tt) => {
-            #[macro_export]
-            macro_rules! _dispatch_session {
-                ($xdg_type:expr => $function:ident($all($args:tt)*)) => { // string => function(*arguments)
-                    match $xdg_type {
-                        // for T in session_types:
-                        //     T::XDG_TYPE => function::<T>(*arguments)
-                        $( <session_type!($session)>::XDG_TYPE => $function::<session_type!($session)>($all($args)*), )+
-                        //
-                        other => anyhow::bail!("{other} is not a valid session type."),
-                    }
-                }
-            }
-            pub use _dispatch_session as dispatch_session; // return _dispatch_session
-        }}
     }
 }

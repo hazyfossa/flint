@@ -1,8 +1,6 @@
-#![allow(dead_code)] // TODO
-
 pub mod control;
 
-use std::os::fd::{AsRawFd, BorrowedFd, FromRawFd, OwnedFd};
+use std::os::fd::{FromRawFd, OwnedFd};
 
 use anyhow::{Context, Result};
 use rustix::fs::{Mode, OFlags};
@@ -14,10 +12,6 @@ impl VtNumber {
     pub fn to_tty_string(&self) -> String {
         format!("tty{}", self.to_string())
     }
-}
-
-unsafe fn clone_fd<'a>(fd: BorrowedFd<'a>) -> OwnedFd {
-    unsafe { OwnedFd::from_raw_fd(fd.as_raw_fd()) }
 }
 
 pub struct ActiveVT {
@@ -69,12 +63,12 @@ impl ActiveVT {
 
         self.accessor.clear().context("Failed to clear terminal")?;
 
-        let currently_active: VtNumber = self
-            .accessor
-            .get_common_state()
-            .context("Failed to query active VT state")?
-            .active_number
-            .into();
+        let currently_active = VtNumber::manually_checked_from(
+            self.accessor
+                .get_common_state()
+                .context("Failed to query active VT state")?
+                .active_number,
+        );
 
         if currently_active != self.number {
             // TODO: is changing general mode from default (None) useful?

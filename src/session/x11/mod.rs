@@ -6,18 +6,15 @@ use std::{
     ffi::OsString,
     io::{BufRead, BufReader, PipeReader, pipe},
     path::{Path, PathBuf},
-    process::{Child, Command, Stdio},
-    sync::mpsc,
-    thread::{self, JoinHandle},
+    process::Command,
 };
 
-use super::manager::prelude::*;
+use super::define::prelude::*;
 
-use auth::{ClientAuthorityEnv, XAuthorityManager};
+use auth::XAuthorityManager;
 
 use crate::{
     environment::prelude::*,
-    login::context::ExitReason,
     utils::{
         fd::{CommandFdCtxExt, FdContext},
         misc::OsStringExt,
@@ -57,16 +54,13 @@ impl EnvParser for Display {
 struct DisplayReceiver(PipeReader);
 
 impl DisplayReceiver {
-    fn setup<'a>(
-        fd_ctx: &mut FdContext,
-        command: &'a mut Command,
-    ) -> Result<(Self, &'a mut Command)> {
+    fn setup<'a>(fd_ctx: &mut FdContext, command: &'a mut Command) -> Result<Self> {
         let (display_rx, display_tx) = pipe().context("Failed to open pipe for display fd")?;
         let display_tx_passed = fd_ctx.pass(display_tx.into())?;
 
-        let command = command.args(["-displayfd", &display_tx_passed.num().to_string()]);
+        command.args(["-displayfd", &display_tx_passed.num().to_string()]);
 
-        Ok((Self(display_rx), command))
+        Ok(Self(display_rx))
     }
 
     fn wait_for_display(self) -> Result<Display> {
@@ -97,52 +91,9 @@ impl WindowPath {
     fn previous_plus_vt(env: &Env, vt: &VtNumber) -> Result<Self> {
         let previous = env.peek::<Self>();
         Ok(Self(match previous {
-            Ok(path) => format!("{}:{}", path.0, vt.to_string()),
+            Ok(path) => format!("{}:{}", *path, vt.to_string()),
             Err(_) => vt.to_string(),
         }))
-    }
-}
-
-pub struct XWatcher {
-    process: Child,
-    shutdown_tx: mpsc::Sender<ExitReason>,
-}
-
-impl XWatcher {
-    fn log(line: String) {
-        println!("Xorg: {line}") // TODO: log levels
-    }
-
-    fn handler(mut self) {
-        let mut stdout = BufReader::new(
-            self.process
-                .stderr
-                .take()
-                .expect("Xorg stderr not piped somehow"),
-        )
-        .lines();
-
-        while let Some(Ok(line)) = stdout.next() {
-            Self::log(line);
-        }
-
-        let exit_status = self
-            .process
-            .wait()
-            .expect("Xorg not started, yet attaching logger");
-
-        // NOTE: we ignore errors on send, because if the other end is closed
-        // we are already undergoing shutdown, most likely due to an error
-        let _ = self
-            .shutdown_tx
-            .send(format!("Xorg exited with {exit_status}"));
-    }
-
-    fn start_thread(self) -> Result<JoinHandle<()>> {
-        thread::Builder::new()
-            .name("Xorg watcher".into())
-            .spawn(|| self.handler())
-            .context("Failed to start logger thread")
     }
 }
 
@@ -172,12 +123,10 @@ fn spawn_server(
     path: &Path,
     authority: PathBuf,
     context: &SessionContext,
-) -> Result<(DisplayReceiver, Child)> {
+) -> Result<DisplayReceiver> {
     let mut fd_ctx = FdContext::new(3..5);
 
-    // TODO: this is flaky. Unsetting env causes strange behaviour.
-    // Ensure that Xorg always starts non-elevated or bypass Xorg.wrap entirely
-    let mut command = context.command(path);
+    let mut command = Command::new(path);
     command
         .arg(format!("vt{}", context.terminal.number.to_string()))
         .args(["-seat".into(), context.seat.serialize()])
@@ -187,24 +136,24 @@ fn spawn_server(
         .args(["-verbose", "3", "-logfile", "/dev/null"])
         .envs([("XORG_RUN_AS_USER_OK", "1")]); // TODO: relevant?
 
-    let (display_rx, command) = DisplayReceiver::setup(&mut fd_ctx, &mut command)?;
+    let display_rx = DisplayReceiver::setup(&mut fd_ctx, &mut command)?;
+    command.with_fd_context(fd_ctx);
 
-    let process = command
-        .with_fd_context(fd_ctx)
-        .stderr(Stdio::piped())
-        .spawn()
-        .context("Failed to spawn X server subprocess")?;
+    context.spawn(command)?;
 
-    Ok((display_rx, process))
+    Ok(display_rx)
 }
 
-impl manager::SessionType for Session {
+impl define::SessionType for Session {
     const XDG_TYPE: &str = "x11";
 
     type ManagerConfig = Config;
-    type EnvDiff = (Display, ClientAuthorityEnv, WindowPath);
 
-    fn setup_session(config: &Config, context: &mut SessionContext) -> Result<Self::EnvDiff> {
+    fn setup_session(
+        config: &Config,
+        context: &mut SessionContext,
+        executable: PathBuf,
+    ) -> Result<()> {
         let window_path = WindowPath::previous_plus_vt(&context.env, &context.terminal.number)?;
 
         let authority_manager = XAuthorityManager::new(context, config.lock_authority)
@@ -214,13 +163,7 @@ impl manager::SessionType for Session {
             .setup_server()
             .context("Failed to define server authority")?;
 
-        let (future_display, process) = spawn_server(&config.xorg_path, server_authority, context)?;
-
-        XWatcher {
-            process,
-            shutdown_tx: context.shutdown_tx.clone(),
-        }
-        .start_thread()?;
+        let future_display = spawn_server(&config.xorg_path, server_authority, context)?;
 
         // NOTE: this will block until the X server is ready
         let display = future_display.wait_for_display()?;
@@ -231,6 +174,7 @@ impl manager::SessionType for Session {
 
         authority_manager.finish(context)?;
 
-        Ok((display, client_authority, window_path))
+        context.update_env((display, client_authority, window_path));
+        context.spawn(Command::new(executable))
     }
 }

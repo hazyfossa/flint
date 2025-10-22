@@ -9,10 +9,7 @@ use pico_args::Arguments;
 
 use crate::{
     login::context::LoginContext,
-    session::{
-        dispatch_session,
-        manager::{SessionManager, SessionType},
-    },
+    session::{define::SessionType, dispatch_session, manager::SessionManager},
     utils::config::Config,
 };
 

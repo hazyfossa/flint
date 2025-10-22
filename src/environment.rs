@@ -8,6 +8,11 @@ pub mod prelude {
     pub use crate::{define_env, env_parser_auto, env_parser_raw, utils::misc::OsStringExt};
 }
 
+// TODO: environment V2
+// preserve type information as along as possible
+// represent as hashmap entry only on import / export
+// all other times - as a proper type
+// + safe accessors
 pub trait EnvVar: EnvParser {
     const KEY: &str;
 }
@@ -54,6 +59,7 @@ macro_rules! env_parser_raw {
 #[macro_export]
 macro_rules! define_env {
     ($key:expr, $vis:vis $struct_name:ident($inner:ty)) => {
+        #[derive(shrinkwraprs::Shrinkwrap)]
         $vis struct $struct_name($inner);
         impl EnvVar for $struct_name {
             const KEY: &str = $key;
@@ -72,14 +78,22 @@ macro_rules! impl_env {
 }
 
 // This is a purely marker-abstraction
-// As the value pulled from env would always be owned due to deserialization
+// as the value pulled from env would always be owned due to deserialization
+//
+// It exists to enforce the common-sense guarantee that for each Env
+// there will only ever be one EnvVar<KEY> per unique KEY
 pub struct PeekEnv<T>(T);
 
-impl<T> Deref for PeekEnv<T> {
-    type Target = T;
+// This allows to look at the inner contents of a variable
+// without allowing to pass it where a unique instance is needed
+//
+// Consider an example of VtNumber(u8)
+//
+impl<Inner, T: Deref<Target = Inner>> Deref for PeekEnv<T> {
+    type Target = Inner;
 
     fn deref(&self) -> &Self::Target {
-        &self.0
+        self.0.deref()
     }
 }
 
@@ -97,12 +111,6 @@ pub fn current() -> Env {
 }
 
 impl Env {
-    pub fn empty() -> Self {
-        Self {
-            state: HashMap::new(),
-        }
-    }
-
     pub fn from_values(values: impl IntoIterator<Item = (String, OsString)>) -> Self {
         Self {
             state: values.into_iter().collect(),
@@ -161,16 +169,10 @@ impl Env {
 }
 
 pub trait EnvRecipient {
-    fn merge_env(&mut self, env: Env) -> Result<()>;
     fn set_env(&mut self, env: Env) -> Result<()>;
 }
 
 impl EnvRecipient for Command {
-    fn merge_env(&mut self, env: Env) -> Result<()> {
-        self.envs(env.state);
-        Ok(())
-    }
-
     fn set_env(&mut self, env: Env) -> Result<()> {
         self.env_clear().envs(env.state);
         Ok(())
@@ -179,11 +181,6 @@ impl EnvRecipient for Command {
 
 pub trait EnvContainer: Sized {
     fn apply_as_container(self, env: Env) -> Env;
-
-    fn to_env(self) -> Env {
-        let env = Env::empty();
-        self.apply_as_container(env)
-    }
 }
 
 pub trait EnvContainerPartial {

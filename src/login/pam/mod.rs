@@ -165,19 +165,9 @@ fn env_to_c_pointers(env: Env) -> Vec<*const i8> {
 }
 
 impl EnvRecipient for PAM<'_> {
-    fn merge_env(&mut self, env: Env) -> Result<()> {
-        let env = env_to_c_pointers(env);
-
-        for kv_pair in env.to_vec() {
-            pam_call!(let ret = self.pam_putenv(kv_pair));
-            ret?;
-        }
-        Ok(())
-    }
-
     fn set_env(&mut self, env: Env) -> Result<()> {
-        // NOTE: misc_paste_env in pam_sys is constrained to unicode (UTF-8)
-        // while our Env is not
+        // NOTE: misc_paste_env in pam_sys::wrappped is constrained to unicode (UTF-8)
+        // while our Env (and this impl) is not
 
         let env = env_to_c_pointers(env);
         pam_call!(let ret = self.pam_misc_paste_env(env.as_ptr()));

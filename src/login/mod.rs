@@ -17,10 +17,7 @@ use crate::{
         tty::{ActiveVT, VtNumber},
         users::UserInfoProvider,
     },
-    session::{
-        manager::{SessionManager, SessionType},
-        metadata::SessionMetadata,
-    },
+    session::{define::SessionType, manager::SessionManager, metadata::SessionMetadata},
 };
 
 #[allow(dead_code)]
@@ -53,7 +50,7 @@ fn login_worker<T: SessionType>(
     pam.credentials(CredentialsOP::Establish)?;
 
     let user_info = user_info_provider.query(&pam.get_username()?)?;
-    let switch_user = user_info.as_user_id();
+    let user_id = user_info.as_user_id();
 
     process::setsid().context("Failed to become a session leader process")?;
 
@@ -68,10 +65,14 @@ fn login_worker<T: SessionType>(
     let env = pam.get_env()?;
 
     let terminal = ActiveVT::new(vt_number).context("Failed to provision an active VT")?;
+    terminal
+        .set_as_current()
+        .context("failed to set terminal as current")?;
+
     pam.set_item(PamItemType::TTY, &vt_number.to_tty_string())?;
     let env = env.set(vt_number);
 
-    let context = LoginContext::new(env, seat, terminal, switch_user)
+    let context = LoginContext::new(env, seat, terminal, user_id)
         .context("Cannot establish a login context")?;
 
     let session = session_manager.spawn_session(context, session_metadata.executable)?;

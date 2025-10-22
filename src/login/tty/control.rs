@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 use std::{
     io::IsTerminal,
     os::fd::{AsFd, BorrowedFd, OwnedFd},
@@ -51,7 +53,6 @@ macro_rules! vt_property {
 
 // State
 
-#[allow(dead_code)]
 #[repr(C)]
 pub struct CommonState {
     pub active_number: u16,
@@ -128,13 +129,13 @@ struct SwitchVtTarget {
 impl VTAccessor {
     pub fn activate(&self, number: VtNumber, mode: Option<Mode>) -> io::Result<()> {
         let target = SwitchVtTarget {
-            number: number.as_int() as _,
+            number: *number as _,
             mode: mode.unwrap_or_default(),
         };
 
         unsafe {
             ioctl::ioctl(&self.0, IoSetActivateVT::new(target))?;
-            ioctl::ioctl(&self.0, IoWaitVT::new(number.as_int()))?;
+            ioctl::ioctl(&self.0, IoWaitVT::new(*number))?;
         };
 
         Ok(())

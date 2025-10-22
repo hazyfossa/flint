@@ -1,4 +1,7 @@
-use super::manager::prelude::*;
+#![allow(dead_code)]
+use std::path::PathBuf;
+
+use super::define::prelude::*;
 use crate::environment::prelude::*;
 
 define_env!("WAYLAND_DISPLAY", pub Display(String));
@@ -20,16 +23,16 @@ impl Default for Config {
     }
 }
 
-impl manager::SessionType for Session {
+impl define::SessionType for Session {
     const XDG_TYPE: &str = "wayland";
 
     type ManagerConfig = Config;
-    type EnvDiff = Display;
 
     fn setup_session(
         _config: &Config,
         _context: &mut SessionContext,
-    ) -> anyhow::Result<Self::EnvDiff> {
+        _executable: PathBuf,
+    ) -> anyhow::Result<()> {
         todo!()
     }
 }

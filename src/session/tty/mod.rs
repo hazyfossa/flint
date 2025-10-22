@@ -1,9 +1,9 @@
-use std::path::PathBuf;
+use std::{path::PathBuf, process::Command};
 
-use anyhow::{Result, anyhow};
+use anyhow::{Context, Result, anyhow};
 
-use super::manager::prelude::*;
-use crate::login::{VtRenderMode, context::VtNumber};
+use super::define::prelude::*;
+use crate::login::{VtRenderMode, users::env::Shell};
 
 pub struct Session;
 
@@ -11,16 +11,31 @@ pub struct Session;
 #[serde(default)]
 pub struct Config {}
 
-impl manager::SessionType for Session {
+impl define::SessionType for Session {
     const XDG_TYPE: &str = "tty";
 
     type ManagerConfig = Config;
-    type EnvDiff = VtNumber;
 
     const VT_RENDER_MODE: VtRenderMode = VtRenderMode::Text;
 
-    fn setup_session(_config: &Config, context: &mut SessionContext) -> Result<Self::EnvDiff> {
-        Ok(context.terminal.number.clone())
+    fn setup_session(
+        _config: &Config,
+        context: &mut SessionContext,
+        executable: PathBuf,
+    ) -> Result<()> {
+        let executable = if executable == PathBuf::from("shell_env") {
+            &*context
+                .env
+                .peek::<Shell>()
+                .context("Cannot find user shell")?
+        } else {
+            &executable
+        };
+
+        // TODO: should we pass Seat here too?
+        context.update_env(context.terminal.number);
+
+        context.spawn(Command::new(executable))
     }
 }
 
@@ -28,7 +43,7 @@ fn special_meta_shell() -> SessionMetadata {
     SessionMetadata {
         name: "shell".to_string(),
         description: Some("Default shell as set for the target user".to_string()),
-        executable: PathBuf::from("<set_externally>"),
+        executable: PathBuf::from("<shell_env>"),
     }
 }
 

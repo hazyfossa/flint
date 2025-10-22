@@ -1,26 +1,27 @@
-use std::{os::unix::process::CommandExt, path::Path, process::Command};
-
 use anyhow::{Context, Result};
-use rustix::process::{self, Signal};
+use shrinkwraprs::Shrinkwrap;
 
 use crate::{
-    environment::{EnvContainer, EnvRecipient, prelude::*},
+    environment::{EnvContainer, prelude::*},
     login::{tty::ActiveVT, users::UserID},
     utils::runtime_dir::RuntimeDirManager,
 };
 
-#[derive(Clone, Copy, PartialEq)]
+#[derive(Shrinkwrap, Clone, Copy, PartialEq)]
 pub struct VtNumber(u16);
 
-impl From<u16> for VtNumber {
-    fn from(value: u16) -> Self {
-        Self(value)
-    }
-}
-
 impl VtNumber {
-    pub fn as_int(self) -> u16 {
-        self.0
+    // This function is soft-unsafe, as it is the caller responsibility
+    // to ensure "number" indicates a valid VT to handle
+    //
+    // For example, it is a really bad idea to assign this to an arbitrary value
+    // as that will allow (among other things) switching to this VT while another program is running in it
+    // While not undefined behaviour, this is undesirable.
+    //
+    // General rule of thumb: either the user or the kernel should tell you this VT number is free
+    // before you call this
+    pub fn manually_checked_from(number: u16) -> Self {
+        Self(number)
     }
 }
 
@@ -80,8 +81,6 @@ impl EnvParser for SessionClass {
     }
 }
 
-pub type ExitReason = String;
-
 pub struct LoginContext {
     pub terminal: ActiveVT,
     pub seat: Seat,
@@ -125,24 +124,6 @@ impl LoginContext {
             user: None,
             runtime_dir_manager,
         })
-    }
-
-    pub fn command(&self, program: &Path) -> Command {
-        let mut cmd = Command::new(program);
-
-        if let Some(switch_user) = &self.user {
-            cmd.uid(switch_user.uid).gid(switch_user.gid);
-        }
-
-        unsafe {
-            cmd.pre_exec(|| {
-                process::set_parent_process_death_signal(Some(Signal::TERM))?;
-                Ok(())
-            });
-        }
-
-        cmd.set_env(self.env.clone()).unwrap();
-        cmd
     }
 }
 
