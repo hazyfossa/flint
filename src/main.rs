@@ -19,7 +19,18 @@ async fn list<Session: SessionType>(config: &Config) -> Result<()> {
     let manager = SessionManager::<Session>::new_from_config(config)?;
 
     for (key, entry) in manager.lookup_metadata_all() {
-        println!("{key}: {entry}")
+        print!("[{key}]");
+
+        let name = entry.name;
+        if name != key {
+            print!(": {name}")
+        }
+
+        if let Some(description) = entry.description {
+            print!(": {description}")
+        }
+
+        print!("\n")
     }
 
     Ok(())

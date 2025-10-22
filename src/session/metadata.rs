@@ -5,7 +5,6 @@ use im::HashMap;
 use serde::Deserialize;
 
 use std::{
-    fmt::Display,
     io::{self, ErrorKind, Read},
     path::PathBuf,
 };
@@ -108,18 +107,6 @@ impl<T: FreedesktopMetadata> SessionMetadataLookup for T {
                 Some((filename, parse_freedesktop_file(&mut file).ok()?))
             })
             .collect()
-    }
-}
-
-impl Display for SessionMetadata {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.name)?;
-
-        if let Some(comment) = &self.description {
-            write!(f, ": {}", comment)?;
-        };
-
-        writeln!(f, "")
     }
 }
 
