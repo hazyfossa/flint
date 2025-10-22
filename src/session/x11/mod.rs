@@ -1,12 +1,12 @@
 mod auth;
 
 use anyhow::{Context, Result, anyhow};
+use tokio::process::Command;
 
 use std::{
     ffi::OsString,
     io::{BufRead, BufReader, PipeReader, pipe},
     path::{Path, PathBuf},
-    process::Command,
 };
 
 use super::define::prelude::*;

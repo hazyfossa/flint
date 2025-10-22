@@ -64,7 +64,7 @@ macro_rules! sessions {
                     match $xdg_type {
                         // for T in session_types:
                         //     T::XDG_TYPE => function::<T>(*arguments)
-                        $( <session_type!($session)>::XDG_TYPE => $function::<session_type!($session)>($all($args)*), )+
+                        $( <session_type!($session)>::XDG_TYPE => $function::<session_type!($session)>($all($args)*).await, )+
                         //
                         other => anyhow::bail!("{other} is not a valid session type."),
                     }

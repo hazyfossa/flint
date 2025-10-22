@@ -1,6 +1,7 @@
-use std::{path::PathBuf, process::Command};
+use std::path::PathBuf;
 
 use anyhow::{Context, Result, anyhow};
+use tokio::process::Command;
 
 use super::define::prelude::*;
 use crate::login::{VtRenderMode, users::env::Shell};

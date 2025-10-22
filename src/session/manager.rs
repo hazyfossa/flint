@@ -1,11 +1,11 @@
 use anyhow::{Context, Result};
+use kanal::{AsyncReceiver, AsyncSender};
 use rustix::process::{self, Signal};
 use serde::Deserialize;
 use shrinkwraprs::Shrinkwrap;
+use tokio::process::Command;
 
-use std::{
-    any::Any, os::unix::process::CommandExt, path::PathBuf, process::Command, sync::mpsc, thread,
-};
+use std::{any::Any, path::PathBuf, process::ExitStatus};
 
 use crate::{
     environment::{EnvContainer, EnvRecipient},
@@ -23,9 +23,31 @@ type ExitReason = String;
 pub struct SessionContext {
     #[shrinkwrap(main_field)]
     pub login_context: LoginContext,
-    pub shutdown_tx: mpsc::Sender<ExitReason>,
+    pub shutdown_tx: AsyncSender<ExitReason>,
 
     resources: Vec<Box<dyn Any>>,
+}
+
+async fn handle_session_subprocess(cmd: Command, shutdown_tx: AsyncSender<ExitReason>) {
+    // TODO: stdio handling
+
+    let program_name = cmd.as_std().get_program().to_owned();
+
+    async fn handler(mut cmd: Command) -> Result<ExitStatus> {
+        let mut wait_token = cmd.spawn()?;
+
+        let exit_code = wait_token.wait().await?;
+        Ok(exit_code)
+    }
+
+    let ret = match handler(cmd).await {
+        Ok(exit_status) => format!("{program_name:?} exited with {exit_status}"),
+        Err(error) => format!("Error while handling {program_name:?}:\n{error}"),
+    };
+
+    // NOTE: we ignore error on send here, as if the shutdown channel is closed
+    // we're most likely already shutting down
+    let _ = shutdown_tx.send(ret).await;
 }
 
 impl SessionContext {
@@ -38,8 +60,6 @@ impl SessionContext {
     }
 
     pub fn spawn(&self, mut cmd: Command) -> Result<()> {
-        // TODO: custom stream processing on stdio
-
         if let Some(switch_user) = &self.user {
             cmd.uid(switch_user.uid).gid(switch_user.gid);
         }
@@ -52,15 +72,11 @@ impl SessionContext {
         }
 
         cmd.set_env(self.env.clone()).unwrap();
-        let mut wait_token = cmd.spawn()?;
 
         let shutdown_tx = self.shutdown_tx.clone();
 
         // TODO: optimize
-        thread::spawn(move || {
-            let exit_status = wait_token.wait().unwrap();
-            shutdown_tx.send(format!("{:?} exited with {exit_status}", cmd.get_program()))
-        });
+        tokio::spawn(handle_session_subprocess(cmd, shutdown_tx));
 
         Ok(())
     }
@@ -71,12 +87,12 @@ impl SessionContext {
 struct SessionBuilder {
     #[shrinkwrap(main_field)]
     context: SessionContext,
-    shutdown_rx: mpsc::Receiver<ExitReason>,
+    shutdown_rx: AsyncReceiver<ExitReason>,
 }
 
 impl SessionBuilder {
     fn new(login_context: LoginContext) -> Self {
-        let (shutdown_tx, shutdown_rx) = mpsc::channel();
+        let (shutdown_tx, shutdown_rx) = kanal::bounded_async(1);
 
         Self {
             shutdown_rx,
@@ -98,14 +114,15 @@ impl SessionBuilder {
 
 pub struct SessionInstance {
     resources: Vec<Box<dyn Any>>,
-    shutdown_rx: mpsc::Receiver<ExitReason>,
+    shutdown_rx: AsyncReceiver<ExitReason>,
 }
 
 impl SessionInstance {
-    pub fn join(self) -> Result<ExitReason> {
+    pub async fn join(self) -> Result<ExitReason> {
         let exit_reason = self
             .shutdown_rx
             .recv()
+            .await
             .context("Tx end of session shutdown channel unexpectedly closed")?;
 
         drop(self.resources);
@@ -144,8 +161,6 @@ impl<T: SessionType> SessionManager<T> {
             .terminal
             .activate(T::VT_RENDER_MODE)
             .context("Failed to swtich to session VT")?;
-
-        // TODO: connect child.wait to shutdown_tx
 
         Ok(builder.finish())
     }

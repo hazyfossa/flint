@@ -23,7 +23,7 @@ use crate::{
 #[allow(dead_code)]
 // NOTE: while technically PAM can query for a username
 // for now we work around that
-fn login_worker<T: SessionType>(
+async fn login_worker<T: SessionType>(
     display: impl PamDisplay,
 
     user_info_provider: impl UserInfoProvider,
@@ -77,7 +77,7 @@ fn login_worker<T: SessionType>(
 
     let session = session_manager.spawn_session(context, session_metadata.executable)?;
 
-    let exit_reason = session.join()?;
+    let exit_reason = session.join().await?;
 
     pam.close_session()?;
     pam.credentials(CredentialsOP::Delete)?;

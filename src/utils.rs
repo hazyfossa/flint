@@ -18,10 +18,11 @@ pub mod misc {
 }
 
 pub mod fd {
-    use std::{ops::Range, os::fd::OwnedFd, process::Command};
+    use std::{ops::Range, os::fd::OwnedFd};
 
     use anyhow::{Result, anyhow};
     use command_fds::{CommandFdExt, FdMapping};
+    use tokio::process::Command;
 
     pub struct FdContext {
         free_fd_source: Range<u32>,
@@ -44,7 +45,7 @@ pub mod fd {
 
             self.mappings.push(FdMapping {
                 parent_fd: fd,
-                child_fd: mapped_fd as i32, // TODO: why signed here? Fds are positive-only
+                child_fd: mapped_fd as i32,
             });
             Ok(PassedFd(mapped_fd))
         }

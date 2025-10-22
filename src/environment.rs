@@ -1,7 +1,8 @@
-use std::{env, ffi::OsString, ops::Deref, process::Command};
+use std::{env, ffi::OsString, ops::Deref};
 
 use anyhow::{Context, Result, anyhow};
 use im::HashMap;
+use tokio::process::Command;
 
 pub mod prelude {
     pub use super::{Env, EnvParser, EnvVar};

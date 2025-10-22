@@ -15,7 +15,7 @@ use crate::{
 
 pub const APP_NAME: &str = "flint";
 
-fn list<Session: SessionType>(config: &Config) -> Result<()> {
+async fn list<Session: SessionType>(config: &Config) -> Result<()> {
     let manager = SessionManager::<Session>::new_from_config(config)?;
 
     for (key, entry) in manager.lookup_metadata_all() {
@@ -25,7 +25,7 @@ fn list<Session: SessionType>(config: &Config) -> Result<()> {
     Ok(())
 }
 
-fn run<Session: SessionType>(config: &Config, mut args: Arguments) -> Result<()> {
+async fn run<Session: SessionType>(config: &Config, mut args: Arguments) -> Result<()> {
     let manager = SessionManager::<Session>::new_from_config(config)?;
 
     let name: String = args.free_from_str().map_err(|_| {
@@ -44,7 +44,7 @@ fn run<Session: SessionType>(config: &Config, mut args: Arguments) -> Result<()>
         .spawn_session(context, metadata.executable)
         .context("Failed to start session")?;
 
-    let exit_reason = session.join()?;
+    let exit_reason = session.join().await?;
 
     println!(
         "Session exited.
@@ -54,11 +54,11 @@ fn run<Session: SessionType>(config: &Config, mut args: Arguments) -> Result<()>
     Ok(())
 }
 
-fn daemon(_config: Config) -> Result<()> {
+async fn daemon(_config: Config) -> Result<()> {
     todo!()
 }
 
-fn cli(subcommand: &str, mut args: Arguments, config: Config) -> Result<()> {
+async fn cli(subcommand: &str, mut args: Arguments, config: Config) -> Result<()> {
     let session_type = args
         .opt_value_from_str(["-s", "--session-type"])?
         .unwrap_or("x11".to_string());
@@ -70,13 +70,14 @@ fn cli(subcommand: &str, mut args: Arguments, config: Config) -> Result<()> {
     }
 }
 
-fn main() -> Result<()> {
+#[tokio::main(flavor = "current_thread")]
+async fn main() -> Result<()> {
     let mut args = Arguments::from_env();
 
     let config = Config::from_args(&mut args, &format!("/etc/{APP_NAME}.toml"))?;
 
     match args.subcommand()? {
-        Some(ref subcommand) => cli(subcommand, args, config),
-        None => daemon(config),
+        Some(ref subcommand) => cli(subcommand, args, config).await,
+        None => daemon(config).await,
     }
 }
