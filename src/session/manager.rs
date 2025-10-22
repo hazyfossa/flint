@@ -1,9 +1,8 @@
 use anyhow::{Context, Result};
-use kanal::{AsyncReceiver, AsyncSender};
 use rustix::process::{self, Signal};
 use serde::Deserialize;
 use shrinkwraprs::Shrinkwrap;
-use tokio::process::Command;
+use tokio::{process::Command, sync::mpsc};
 
 use std::{any::Any, path::PathBuf, process::ExitStatus};
 
@@ -23,12 +22,12 @@ type ExitReason = String;
 pub struct SessionContext {
     #[shrinkwrap(main_field)]
     pub login_context: LoginContext,
-    pub shutdown_tx: AsyncSender<ExitReason>,
+    pub shutdown_tx: mpsc::Sender<ExitReason>,
 
     resources: Vec<Box<dyn Any>>,
 }
 
-async fn handle_session_subprocess(cmd: Command, shutdown_tx: AsyncSender<ExitReason>) {
+async fn handle_session_subprocess(cmd: Command, shutdown_tx: mpsc::Sender<ExitReason>) {
     // TODO: stdio handling
 
     let program_name = cmd.as_std().get_program().to_owned();
@@ -85,12 +84,12 @@ impl SessionContext {
 struct SessionBuilder {
     #[shrinkwrap(main_field)]
     context: SessionContext,
-    shutdown_rx: AsyncReceiver<ExitReason>,
+    shutdown_rx: mpsc::Receiver<ExitReason>,
 }
 
 impl SessionBuilder {
     fn new(login_context: LoginContext) -> Self {
-        let (shutdown_tx, shutdown_rx) = kanal::bounded_async(1);
+        let (shutdown_tx, shutdown_rx) = mpsc::channel(1);
 
         Self {
             shutdown_rx,
@@ -112,11 +111,11 @@ impl SessionBuilder {
 
 pub struct SessionInstance {
     resources: Vec<Box<dyn Any>>,
-    shutdown_rx: AsyncReceiver<ExitReason>,
+    shutdown_rx: mpsc::Receiver<ExitReason>,
 }
 
 impl SessionInstance {
-    pub async fn join(self) -> Result<ExitReason> {
+    pub async fn join(mut self) -> Result<ExitReason> {
         let exit_reason = self
             .shutdown_rx
             .recv()
