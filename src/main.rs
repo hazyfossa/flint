@@ -2,6 +2,7 @@ mod environment;
 mod login;
 mod plymouth;
 mod session;
+mod systemd;
 mod utils;
 
 use anyhow::{Context, Result, anyhow};
