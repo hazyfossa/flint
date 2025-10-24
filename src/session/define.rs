@@ -57,17 +57,17 @@ macro_rules! sessions {
         $crate::scope!{($all:tt) => {
             #[macro_export]
             macro_rules! _dispatch_session {
-                ($xdg_type:expr => $function:ident($all($args:tt)*)) => { // string => function(*arguments)
+                // string => function(*arguments)
+                ($xdg_type:expr => $function:ident($all($args:tt)*)) => {
                     match $xdg_type {
-                        // for T in session_types:
-                        //     T::XDG_TYPE => function::<T>(*arguments)
+                        // T::XDG_TYPE => function::<T>(*arguments)
                         $( <session_type!($session)>::XDG_TYPE => $function::<session_type!($session)>($all($args)*).await, )+
                         //
                         other => anyhow::bail!("{other} is not a valid session type."),
                     }
                 }
             }
-            pub use _dispatch_session as dispatch_session; // return _dispatch_session
+            pub use _dispatch_session as dispatch_session;
         }}
     }
 }

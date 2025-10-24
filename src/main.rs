@@ -41,11 +41,10 @@ async fn list<Session: SessionType>(config: &Config) -> Result<()> {
 async fn run<Session: SessionType>(config: &Config, mut args: Arguments) -> Result<()> {
     let manager = SessionManager::<Session>::new_from_config(config)?;
 
+    #[rustfmt::skip]
     let name: String = args.free_from_str().map_err(|_| {
-        anyhow!(
-            "No session name provided.
-            Use --list to list available sessions."
-        )
+        anyhow!("No session name provided.
+        Use --list to list available sessions.")
     })?;
 
     let context = LoginContext::current(environment::current())?;

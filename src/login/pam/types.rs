@@ -67,6 +67,7 @@ impl FlagsBuilder {
         Self(value)
     }
 
+    #[inline]
     pub fn set_if(self, condition: bool, flag: Flag) -> Self {
         if condition { Self(self.0 | flag) } else { self }
     }

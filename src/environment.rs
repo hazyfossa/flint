@@ -10,7 +10,7 @@ pub mod prelude {
 }
 
 // TODO: environment V2
-// preserve type information as along as possible
+// preserve type information as long as possible
 // represent as hashmap entry only on import / export
 // all other times - as a proper type
 // + safe accessors
