@@ -15,6 +15,9 @@ pub const APP_NAME: &str = "flint";
 
 #[tokio::main(flavor = "current_thread")]
 async fn main() -> Result<()> {
+    let subscriber = tracing_subscriber::FmtSubscriber::new();
+    tracing::subscriber::set_global_default(subscriber)?;
+
     let mut args = Arguments::from_env();
 
     let config = Config::from_args(&mut args, &format!("/etc/{APP_NAME}.toml"))?;
