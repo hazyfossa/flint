@@ -7,7 +7,7 @@ pub async fn run(config: Config) -> Result<()> {
         .await
         .context("Cannot conntext to DBus")?;
 
-    let logind = systemd::dbus::login::LoginD::builder(&dbus)
+    let logind = systemd::dbus::logind::LoginD::builder(&dbus)
         .cache_properties(zbus::proxy::CacheProperties::No)
         .build()
         .await
