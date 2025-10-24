@@ -33,6 +33,10 @@ impl ActiveVT {
         Ok(Self { accessor, number })
     }
 
+    pub fn raw(self) -> VTAccessor {
+        self.accessor
+    }
+
     pub fn set_as_current(&self) -> Result<()> {
         self.accessor.bind_stdio().context("Failed to bind stdio")?;
 

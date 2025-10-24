@@ -1,5 +1,5 @@
 #![allow(dead_code)]
-use std::path::PathBuf;
+use std::path::Path;
 
 use super::define::prelude::*;
 use crate::environment::prelude::*;
@@ -31,7 +31,7 @@ impl define::SessionType for Session {
     async fn setup_session(
         _config: &Config,
         _context: &mut SessionContext,
-        _executable: PathBuf,
+        _executable: &Path,
     ) -> anyhow::Result<()> {
         todo!()
     }

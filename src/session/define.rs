@@ -1,7 +1,7 @@
 use anyhow::Result;
 use serde::de::DeserializeOwned;
 
-use std::path::PathBuf;
+use std::path::Path;
 
 use super::metadata::SessionMetadataLookup;
 use crate::{
@@ -16,7 +16,7 @@ pub mod prelude {
         session::{
             define,
             manager::SessionContext,
-            metadata::{self, SessionMap, SessionMetadata},
+            metadata::{self, SessionMap},
         },
     };
     pub use serde::Deserialize;
@@ -32,7 +32,7 @@ pub trait SessionType: Sized + SessionMetadataLookup {
     async fn setup_session(
         config: &Self::ManagerConfig,
         context: &mut SessionContext,
-        executable: PathBuf,
+        executable: &Path,
     ) -> Result<()>;
 }
 

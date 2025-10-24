@@ -18,15 +18,17 @@ pub const APP_NAME: &str = "flint";
 async fn list<Session: SessionType>(config: &Config) -> Result<()> {
     let manager = SessionManager::<Session>::new_from_config(config)?;
 
-    for (key, entry) in manager.lookup_metadata_all() {
-        print!("[{key}]");
+    for entry in manager.lookup_metadata_all() {
+        let id = &entry.id;
+        print!("[{id}]");
 
-        let name = entry.name;
-        if name != key {
+        if let Some(name) = &entry.display_name
+            && name != id
+        {
             print!(": {name}")
         }
 
-        if let Some(description) = entry.description {
+        if let Some(description) = &entry.description {
             print!(": {description}")
         }
 
@@ -50,7 +52,7 @@ async fn run<Session: SessionType>(config: &Config, mut args: Arguments) -> Resu
     let metadata = manager.lookup_metadata(&name)?;
 
     let session = manager
-        .spawn_session(context, metadata.executable)
+        .spawn_session(context, &metadata.executable)
         .await
         .context("Failed to start session")?;
 

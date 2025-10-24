@@ -1,10 +1,13 @@
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result, anyhow};
 use tokio::process::Command;
 
 use super::define::prelude::*;
-use crate::login::{VtRenderMode, users::env::Shell};
+use crate::{
+    login::{VtRenderMode, users::env::Shell},
+    session::metadata::{SessionDefinition, SessionMetadata},
+};
 
 pub struct Session;
 
@@ -22,34 +25,44 @@ impl define::SessionType for Session {
     async fn setup_session(
         _config: &Config,
         context: &mut SessionContext,
-        executable: PathBuf,
+        executable: &Path,
     ) -> Result<()> {
-        let executable = if executable == PathBuf::from("shell_env") {
+        let executable = if executable == PathBuf::from("<shell_env>") {
             &*context
                 .env
                 .peek::<Shell>()
                 .context("Cannot find user shell")?
         } else {
-            &executable
+            executable
         };
 
         // TODO: should we pass Seat here too?
         context.update_env(context.terminal.number);
 
-        context.spawn(Command::new(executable))
+        let mut cmd = Command::new(executable);
+        let terminal = context.terminal.raw(); // TODO
+
+        unsafe {
+            cmd.pre_exec(move || Ok(terminal.bind_stdio()?));
+        }
+
+        context.spawn(cmd)
     }
 }
 
-fn special_meta_shell() -> SessionMetadata {
-    SessionMetadata {
-        name: "shell".to_string(),
-        description: Some("Default shell as set for the target user".to_string()),
-        executable: PathBuf::from("<shell_env>"),
-    }
+fn special_meta_shell() -> SessionDefinition {
+    SessionDefinition::from_meta(
+        "shell".to_string(),
+        SessionMetadata {
+            display_name: None,
+            description: Some("Default shell as set for the target user".to_string()),
+            executable: PathBuf::from("<shell_env>"),
+        },
+    )
 }
 
 impl metadata::SessionMetadataLookup for Session {
-    fn lookup_metadata(name: &str) -> Result<SessionMetadata> {
+    fn lookup_metadata(name: &str) -> Result<SessionDefinition> {
         match name {
             "shell" => Ok(special_meta_shell()),
 
@@ -64,6 +77,6 @@ impl metadata::SessionMetadataLookup for Session {
         // NOTE: at least debian provides a list of valid shells
 
         // This is a hack
-        SessionMap::new().update("shell".to_string(), special_meta_shell())
+        SessionMap::new().update(special_meta_shell())
     }
 }

@@ -17,7 +17,7 @@ use crate::{
         tty::{ActiveVT, VtNumber},
         users::UserInfoProvider,
     },
-    session::{define::SessionType, manager::SessionManager, metadata::SessionMetadata},
+    session::{define::SessionType, manager::SessionManager, metadata::SessionDefinition},
 };
 
 #[allow(dead_code)]
@@ -36,7 +36,7 @@ async fn login_worker<T: SessionType>(
 
     session_manager: SessionManager<T>,
     session_class: SessionClass,
-    session_metadata: SessionMetadata,
+    session_metadata: SessionDefinition,
 
     require_auth: bool,
     silent: bool,
@@ -54,11 +54,12 @@ async fn login_worker<T: SessionType>(
 
     process::setsid().context("Failed to become a session leader process")?;
 
+    let executable = session_metadata.executable.clone();
     let env = inherit_env
         .set(session_class)
         .merge(user_info)
-        .merge_from(&session_manager)
-        .merge_from(&session_metadata);
+        .merge(session_metadata)
+        .merge_from(&session_manager);
 
     pam.set_env(env)?;
     pam.open_session()?;
@@ -75,9 +76,7 @@ async fn login_worker<T: SessionType>(
     let context = LoginContext::new(env, seat, terminal, user_id)
         .context("Cannot establish a login context")?;
 
-    let session = session_manager
-        .spawn_session(context, session_metadata.executable)
-        .await?;
+    let session = session_manager.spawn_session(context, &executable).await?;
 
     let exit_reason = session.join().await?;
 

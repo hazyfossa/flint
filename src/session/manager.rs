@@ -4,14 +4,14 @@ use serde::Deserialize;
 use shrinkwraprs::Shrinkwrap;
 use tokio::{process::Command, sync::mpsc};
 
-use std::{any::Any, path::PathBuf, process::ExitStatus};
+use std::{any::Any, path::Path, process::ExitStatus};
 
 use crate::{
     environment::{EnvContainer, EnvRecipient},
     login::context::LoginContext,
     session::{
         define::SessionType,
-        metadata::{SessionMap, SessionMetadata},
+        metadata::{SessionDefinition, SessionMap},
     },
     utils::config::Config,
 };
@@ -131,13 +131,19 @@ impl SessionInstance {
 pub struct SessionManager<T: SessionType> {
     #[serde(flatten)]
     config: T::ManagerConfig,
+    #[serde(rename = "entry")]
     entries: SessionMap,
 }
 
 impl<T: SessionType> SessionManager<T> {
     pub fn new_from_config(config: &Config) -> Result<Self> {
         Ok(match config.session.get(T::XDG_TYPE) {
-            Some(session_config) => session_config.clone().try_into()?,
+            Some(session_config) => session_config
+                .clone()
+                .try_into()
+                .context("Config error")
+                .context(format!("Invalid config for \"[session.{}]\"", T::XDG_TYPE))?,
+
             None => Self {
                 config: T::ManagerConfig::default(),
                 entries: SessionMap::new(),
@@ -148,7 +154,7 @@ impl<T: SessionType> SessionManager<T> {
     pub async fn spawn_session(
         &self,
         context: LoginContext,
-        executable: PathBuf,
+        executable: &Path,
     ) -> Result<SessionInstance> {
         let mut builder = SessionBuilder::new(context);
 
@@ -162,12 +168,12 @@ impl<T: SessionType> SessionManager<T> {
         Ok(builder.finish())
     }
 
-    pub fn lookup_metadata(&self, name: &str) -> Result<SessionMetadata> {
+    pub fn lookup_metadata(&self, name: &str) -> Result<SessionDefinition> {
         if let Some(internal_entry) = self.entries.get(name) {
-            return Ok(internal_entry.clone());
+            return Ok(internal_entry);
         };
 
-        T::lookup_metadata(name)
+        T::lookup_metadata(&name)
     }
 
     pub fn lookup_metadata_all(&self) -> SessionMap {

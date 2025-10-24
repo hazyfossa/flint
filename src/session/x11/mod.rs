@@ -158,7 +158,7 @@ impl define::SessionType for Session {
     async fn setup_session(
         config: &Config,
         context: &mut SessionContext,
-        executable: PathBuf,
+        executable: &Path,
     ) -> Result<()> {
         let window_path = WindowPath::previous_plus_vt(&context.env, &context.terminal.number)?;
 
