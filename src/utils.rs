@@ -213,13 +213,19 @@ pub mod config {
     use serde::Deserialize;
     use toml::Table;
 
-    type Partial = Table;
+    use crate::{greet::GreeterConfig, mode::daemon::DaemonConfig};
 
-    #[derive(Deserialize, Default, Debug)]
+    type ParseLater = Table;
+
+    #[derive(Debug, Deserialize, Default)]
     pub struct Config {
         #[allow(dead_code)]
         version: Option<String>,
-        pub session: HashMap<String, Partial>,
+        #[serde(rename = "session")]
+        pub sessions: HashMap<String, ParseLater>,
+        #[serde(rename = "greeter")]
+        pub greeters: HashMap<String, GreeterConfig>,
+        pub daemon: Option<DaemonConfig>,
     }
 
     impl Config {

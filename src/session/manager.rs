@@ -138,7 +138,7 @@ pub struct SessionManager<T: SessionType> {
 
 impl<T: SessionType> SessionManager<T> {
     pub fn new_from_config(config: &Config) -> Result<Self> {
-        Ok(match config.session.get(T::XDG_TYPE) {
+        Ok(match config.sessions.get(T::XDG_TYPE) {
             Some(session_config) => session_config
                 .clone()
                 .try_into()

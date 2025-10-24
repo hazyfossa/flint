@@ -119,7 +119,8 @@ impl LoginContext {
         Most likely you are already running a graphical session.",
         )?;
 
-        let terminal = Terminal::current(vt_number)?;
+        let terminal =
+            Terminal::current(vt_number).context("Cannot open current terminal (interactively)")?;
 
         let seat = env.pull::<Seat>().unwrap_or_default();
 

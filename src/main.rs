@@ -1,4 +1,5 @@
 mod environment;
+mod greet;
 mod login;
 mod mode;
 mod plymouth;
