@@ -3,9 +3,9 @@ mod proto;
 
 use anyhow::{Context, Result};
 use bytes::BytesMut;
-use std::{
-    io::{Read, Write},
-    os::unix::net::UnixStream,
+use tokio::{
+    io::{AsyncReadExt, AsyncWriteExt},
+    net::UnixStream,
 };
 
 use proto::{Response, response};
@@ -14,21 +14,23 @@ use proto::{Response, response};
 macro_rules! rpc_method {
     // No argument
     ($method_name:ident, $char:expr, None, $response_type:ty) => {
-        pub fn $method_name(&mut self) -> Result<$response_type> {
+        pub async fn $method_name(&mut self) -> Result<$response_type> {
             self.call(proto::Request {
                 method: $char,
                 argument: None,
             })
+            .await
         }
     };
 
     // With argument
     ($method_name:ident, $char:expr, $arg_name:ident, $response_type:ty) => {
-        pub fn $method_name(&mut self, $arg_name: String) -> Result<$response_type> {
+        pub async fn $method_name(&mut self, $arg_name: String) -> Result<$response_type> {
             self.call(proto::Request {
                 method: $char,
                 argument: Some($arg_name),
             })
+            .await
         }
     };
 }
@@ -39,24 +41,26 @@ pub struct Client {
 
 #[rustfmt::skip::macros(rpc_method)]
 impl Client {
-    pub fn build() -> Result<Self> {
+    pub async fn connnect() -> Result<Self> {
         // TODO: What's the actual (connection) path here?
-        const SOCKET_PATH: &str = "/org/freedesktop/plymouthd";
-        const OLD_SOCKET_PATH: &str = "/ply-boot-protocol";
+        const SOCKET_PATH: &str = "\0/org/freedesktop/plymouthd";
+        const OLD_SOCKET_PATH: &str = "\0/ply-boot-protocol";
 
-        let stream = UnixStream::connect(SOCKET_PATH).unwrap_or(
-            UnixStream::connect(OLD_SOCKET_PATH).context("Failed to connect to plymouthd")?,
+        let stream = UnixStream::connect(SOCKET_PATH).await.unwrap_or(
+            UnixStream::connect(OLD_SOCKET_PATH)
+                .await
+                .context("Failed to connect to plymouthd")?,
         );
 
         Ok(Self { stream })
     }
 
-    pub fn call<T: Response>(&mut self, request: proto::Request) -> Result<T> {
-        self.stream.write_all(&request.serialize()?)?;
-        self.stream.flush()?;
+    pub async fn call<T: Response>(&mut self, request: proto::Request) -> Result<T> {
+        self.stream.write_all(&request.serialize()?).await?;
+        self.stream.flush().await?;
 
         let mut buf = BytesMut::new();
-        self.stream.read(&mut buf)?; // TODO
+        self.stream.read_buf(&mut buf).await?; // TODO
 
         T::read_buf(&mut buf)
     }
