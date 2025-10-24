@@ -139,6 +139,12 @@ impl Env {
         ))
     }
 
+    fn update_untyped(self, k: String, v: OsString) -> Self {
+        Self {
+            state: self.state.update(k, v),
+        }
+    }
+
     pub fn set<E: EnvVar>(self, var: E) -> Self {
         Self {
             state: self.state.update(E::KEY.to_string(), var.serialize()),
@@ -180,12 +186,40 @@ impl EnvRecipient for Command {
     }
 }
 
-pub trait EnvContainer: Sized {
+pub trait EnvContainer {
     fn apply_as_container(self, env: Env) -> Env;
 }
 
 pub trait EnvContainerPartial {
     fn apply_as_container(&self, env: Env) -> Env;
+}
+
+impl<T: EnvVar> EnvContainer for T {
+    fn apply_as_container(self, env: Env) -> Env {
+        env.set(self)
+    }
+}
+
+impl EnvContainer for Env {
+    fn apply_as_container(self, env: Env) -> Env {
+        Self {
+            state: env.state.union(self.state),
+        }
+    }
+}
+
+// NOTE: this is for untyped variables
+// you would usually prefer typed ones instead
+impl EnvContainer for &'static str {
+    fn apply_as_container(self, env: Env) -> Env {
+        let parts: Vec<&str> = self.split("=").collect();
+        if parts.len() != 2 {
+            panic!("Invalid environment update: {self}");
+        }
+
+        let (key, value) = (parts[0], parts[1]);
+        env.update_untyped(key.to_string(), value.into())
+    }
 }
 
 #[rustfmt::skip]
@@ -195,11 +229,11 @@ mod env_container_variadics {
     macro_rules! var_impl {
         ( $( $name:ident )+ ) => {
             #[allow(non_camel_case_types)]
-            impl<$($name: EnvVar),+> EnvContainer for ($($name,)+)
+            impl<$($name: EnvContainer),+> EnvContainer for ($($name,)+)
             {
                 fn apply_as_container(self, env: Env) -> Env {
                     let ($($name,)+) = self;
-                    $(let env = env.set($name);)+
+                    $(let env = env.merge($name);)+
                     env
                 }
             }
@@ -217,18 +251,4 @@ mod env_container_variadics {
     var_impl!   { a b c d e f g h i j }
     var_impl!  { a b c d e f g h i j k }
     var_impl! { a b c d e f g h i j k l }
-}
-
-impl<T: EnvVar> EnvContainer for T {
-    fn apply_as_container(self, env: Env) -> Env {
-        env.set(self)
-    }
-}
-
-impl EnvContainer for Env {
-    fn apply_as_container(self, env: Env) -> Env {
-        Self {
-            state: env.state.union(self.state),
-        }
-    }
 }
