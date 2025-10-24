@@ -1,6 +1,9 @@
 #![allow(dead_code)]
 use std::path::Path;
 
+use anyhow::Result;
+use tokio::process::Command;
+
 use super::define::prelude::*;
 use crate::environment::prelude::*;
 
@@ -30,9 +33,17 @@ impl define::SessionType for Session {
 
     async fn setup_session(
         _config: &Config,
-        _context: &mut SessionContext,
-        _executable: &Path,
-    ) -> anyhow::Result<()> {
-        todo!()
+        context: &mut SessionContext,
+        executable: &Path,
+    ) -> Result<()> {
+        context.update_env((
+            "MOZ_ENABLE_WAYLAND=1",
+            "QT_QPA_PLATFORM=wayland",
+            "SDL_VIDEODRIVER=wayland",
+            "_JAVA_AWT_WM_NONREPARENTING=1",
+        ));
+
+        // TODO: anything else?
+        context.spawn(Command::new(executable))
     }
 }

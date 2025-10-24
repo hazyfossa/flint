@@ -41,11 +41,11 @@ impl define::SessionType for Session {
             executable
         };
 
-        // TODO: should we pass Seat here too?
-        context.update_env(terminal.number);
-
         let mut cmd = Command::new(executable);
 
+        // TODO: is this necessary?
+        // in case of PAM the context-child will inherit the tty stdin
+        // but what about cli?
         unsafe {
             cmd.pre_exec(move || Ok(terminal.raw.bind_stdio()?));
         }
