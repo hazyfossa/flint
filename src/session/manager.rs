@@ -19,6 +19,7 @@ use crate::{
 type ExitReason = String;
 
 #[derive(Shrinkwrap)]
+#[shrinkwrap(mutable)]
 pub struct SessionContext {
     #[shrinkwrap(main_field)]
     pub login_context: LoginContext,
@@ -160,10 +161,12 @@ impl<T: SessionType> SessionManager<T> {
 
         T::setup_session(&self.config, &mut builder, executable).await?;
 
-        builder
-            .terminal
-            .activate(T::VT_RENDER_MODE)
-            .context("Failed to swtich to session VT")?;
+        // TODO: is this the right place?
+        if let Some(terminal) = &builder.terminal {
+            terminal
+                .activate(T::VT_RENDER_MODE)
+                .context("Failed to swtich to session VT")?;
+        }
 
         Ok(builder.finish())
     }

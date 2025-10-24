@@ -90,18 +90,20 @@ impl DisplayReceiver {
     }
 }
 
-define_env!("WINDOWPATH", pub WindowPath(String));
-env_parser_auto!(WindowPath);
+// TODO: is this relevant for modern systems?
+// If yes, we'll need to do VT allocation before xorg
+// define_env!("WINDOWPATH", pub WindowPath(String));
+// env_parser_auto!(WindowPath);
 
-impl WindowPath {
-    fn previous_plus_vt(env: &Env, vt: &VtNumber) -> Result<Self> {
-        let previous = env.peek::<Self>();
-        Ok(Self(match previous {
-            Ok(path) => format!("{}:{}", *path, vt.to_string()),
-            Err(_) => vt.to_string(),
-        }))
-    }
-}
+// impl WindowPath {
+//     fn previous_plus_vt(env: &Env, vt: &VtNumber) -> Result<Self> {
+//         let previous = env.peek::<Self>();
+//         Ok(Self(match previous {
+//             Ok(path) => format!("{}:{}", *path, vt.to_string()),
+//             Err(_) => vt.to_string(),
+//         }))
+//     }
+// }
 
 pub struct Session;
 
@@ -133,8 +135,12 @@ fn spawn_server(
     let mut fd_ctx = FdContext::new(3..5);
 
     let mut command = Command::new(path);
+
+    if let Some(terminal) = &context.terminal {
+        command.arg(format!("vt{}", terminal.number.to_string()));
+    }
+
     command
-        .arg(format!("vt{}", context.terminal.number.to_string()))
         .args(["-seat".into(), context.seat.serialize()])
         .args(["-auth".into(), authority.into_os_string()])
         .args(["-nolisten", "tcp"])
@@ -160,7 +166,7 @@ impl define::SessionType for Session {
         context: &mut SessionContext,
         executable: &Path,
     ) -> Result<()> {
-        let window_path = WindowPath::previous_plus_vt(&context.env, &context.terminal.number)?;
+        // let window_path = WindowPath::previous_plus_vt(&context.env, &context.terminal.number)?;
 
         let authority_manager = XAuthorityManager::new(context, config.lock_authority)
             .context("Failed to setup authority manager")?;
@@ -180,7 +186,7 @@ impl define::SessionType for Session {
 
         authority_manager.finish(context)?;
 
-        context.update_env((display, client_authority, window_path));
+        context.update_env((display, client_authority));
         context.spawn(Command::new(executable))
     }
 }

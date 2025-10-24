@@ -3,7 +3,7 @@ use shrinkwraprs::Shrinkwrap;
 
 use crate::{
     environment::{EnvContainer, prelude::*},
-    login::{tty::ActiveVT, users::UserID},
+    login::{tty::Terminal, users::UserID},
     utils::runtime_dir::RuntimeDirManager,
 };
 
@@ -82,16 +82,22 @@ impl EnvParser for SessionClass {
 }
 
 pub struct LoginContext {
-    pub terminal: ActiveVT,
+    pub terminal: Option<Terminal>,
     pub seat: Seat,
 
     pub env: Env,
+
     pub user: Option<UserID>,
     pub runtime_dir_manager: RuntimeDirManager,
 }
 
 impl LoginContext {
-    pub fn new(env: Env, seat: Seat, terminal: ActiveVT, switch_user: UserID) -> Result<Self> {
+    pub fn new(
+        env: Env,
+        seat: Seat,
+        terminal: Option<Terminal>,
+        switch_user: UserID,
+    ) -> Result<Self> {
         let runtime_dir_manager =
             RuntimeDirManager::from_env(&env).context("Failed to create runtime dir manager")?;
 
@@ -113,12 +119,12 @@ impl LoginContext {
         Most likely you are already running a graphical session.",
         )?;
 
-        let terminal = ActiveVT::current(vt_number)?;
+        let terminal = Terminal::current(vt_number)?;
 
         let seat = env.pull::<Seat>().unwrap_or_default();
 
         Ok(Self {
-            terminal,
+            terminal: Some(terminal),
             seat,
             env,
             user: None,

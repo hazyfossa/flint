@@ -54,7 +54,7 @@ impl XAuthorityManager {
 
         let directory = context
             .runtime_dir_manager
-            .create(&format!("vt-{}", context.terminal.number.to_string()))?;
+            .create(&format!("{}", context.seat.to_string()))?;
 
         Ok(Self {
             lock,

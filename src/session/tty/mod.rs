@@ -27,6 +27,11 @@ impl define::SessionType for Session {
         context: &mut SessionContext,
         executable: &Path,
     ) -> Result<()> {
+        let terminal = context
+            .terminal
+            .take()
+            .ok_or(anyhow!("Failed to aqquire terminal from context"))?;
+
         let executable = if executable == PathBuf::from("<shell_env>") {
             &*context
                 .env
@@ -37,13 +42,12 @@ impl define::SessionType for Session {
         };
 
         // TODO: should we pass Seat here too?
-        context.update_env(context.terminal.number);
+        context.update_env(terminal.number);
 
         let mut cmd = Command::new(executable);
-        let terminal = context.terminal.raw(); // TODO
 
         unsafe {
-            cmd.pre_exec(move || Ok(terminal.bind_stdio()?));
+            cmd.pre_exec(move || Ok(terminal.raw.bind_stdio()?));
         }
 
         context.spawn(cmd)

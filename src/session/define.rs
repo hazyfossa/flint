@@ -11,13 +11,10 @@ use crate::{
 };
 
 pub mod prelude {
-    pub use crate::{
-        login::context::VtNumber,
-        session::{
-            define,
-            manager::SessionContext,
-            metadata::{self, SessionMap},
-        },
+    pub use crate::session::{
+        define,
+        manager::SessionContext,
+        metadata::{self, SessionMap},
     };
     pub use serde::Deserialize;
 }

@@ -14,7 +14,7 @@ use crate::{
     login::{
         context::{LoginContext, Seat, SessionClass},
         pam::{CredentialsOP, PamDisplay, PamItemType},
-        tty::{ActiveVT, VtNumber},
+        tty::{Terminal, VtNumber},
         users::UserInfoProvider,
     },
     session::{define::SessionType, manager::SessionManager, metadata::SessionDefinition},
@@ -65,7 +65,7 @@ async fn login_worker<T: SessionType>(
     pam.open_session()?;
     let env = pam.get_env()?;
 
-    let terminal = ActiveVT::new(vt_number).context("Failed to provision an active VT")?;
+    let terminal = Terminal::new(vt_number).context("Failed to provision an active VT")?;
     terminal
         .set_as_current()
         .context("failed to set terminal as current")?;
@@ -73,7 +73,7 @@ async fn login_worker<T: SessionType>(
     pam.set_item(PamItemType::TTY, &vt_number.to_tty_string())?;
     let env = env.set(vt_number);
 
-    let context = LoginContext::new(env, seat, terminal, user_id)
+    let context = LoginContext::new(env, seat, Some(terminal), user_id)
         .context("Cannot establish a login context")?;
 
     let session = session_manager.spawn_session(context, &executable).await?;

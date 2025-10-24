@@ -14,12 +14,12 @@ impl VtNumber {
     }
 }
 
-pub struct ActiveVT {
-    accessor: VTAccessor,
+pub struct Terminal {
+    pub raw: VTAccessor,
     pub number: VtNumber,
 }
 
-impl ActiveVT {
+impl Terminal {
     pub fn new(number: VtNumber) -> Result<Self> {
         let fd = rustix::fs::open(
             format!("/dev/{}", number.to_tty_string()),
@@ -30,17 +30,16 @@ impl ActiveVT {
 
         let accessor = VTAccessor::from_fd(fd)?;
 
-        Ok(Self { accessor, number })
-    }
-
-    pub fn raw(self) -> VTAccessor {
-        self.accessor
+        Ok(Self {
+            raw: accessor,
+            number,
+        })
     }
 
     pub fn set_as_current(&self) -> Result<()> {
-        self.accessor.bind_stdio().context("Failed to bind stdio")?;
+        self.raw.bind_stdio().context("Failed to bind stdio")?;
 
-        self.accessor
+        self.raw
             .set_as_controlling_tty()
             .context("Failed to set as controlling tty")?;
 
@@ -53,7 +52,7 @@ impl ActiveVT {
         let stdin = unsafe { OwnedFd::from_raw_fd(0) };
 
         Ok(Self {
-            accessor: VTAccessor::from_fd(stdin)?,
+            raw: VTAccessor::from_fd(stdin)?,
             number,
         })
     }
@@ -61,14 +60,14 @@ impl ActiveVT {
     // NOTE: can cause screen flicker due to VT switching
     // if another VT is active
     pub fn activate(&self, render_mode: RenderMode) -> Result<()> {
-        self.accessor
+        self.raw
             .set_render_mode(render_mode)
             .context("failed to set VT render mode")?;
 
-        self.accessor.clear().context("Failed to clear terminal")?;
+        self.raw.clear().context("Failed to clear terminal")?;
 
         let currently_active = VtNumber::manually_checked_from(
-            self.accessor
+            self.raw
                 .get_common_state()
                 .context("Failed to query active VT state")?
                 .active_number,
@@ -76,7 +75,7 @@ impl ActiveVT {
 
         if currently_active != self.number {
             // TODO: is changing general mode from default (None) useful?
-            self.accessor
+            self.raw
                 .activate(self.number, None)
                 .context("Failed to activate VT")?;
         }
