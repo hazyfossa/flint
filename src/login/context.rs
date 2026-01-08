@@ -46,7 +46,7 @@ impl Default for Seat {
     }
 }
 
-// UserIncomplete, Manager, Bacjground and None are not here as those aren't relevant
+// UserIncomplete, Manager, Background and None are not here as those aren't relevant
 #[allow(dead_code)]
 pub enum SessionClass {
     User { early: bool, light: bool },

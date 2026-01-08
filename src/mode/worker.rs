@@ -1,7 +1,6 @@
 use anyhow::{Context, Result};
 use pico_args::Arguments;
 use rustix::process;
-use tokio::net::UnixDatagram;
 
 use crate::{
     APP_NAME,
@@ -31,7 +30,7 @@ async fn login<T: SessionType>(
 
     session_manager: SessionManager<T>,
     session_class: SessionClass,
-    session_metadata: SessionDefinition,
+    session_definition: SessionDefinition,
 
     require_auth: bool,
     silent: bool,
@@ -49,11 +48,11 @@ async fn login<T: SessionType>(
 
     process::setsid().context("Failed to become a session leader process")?;
 
-    let executable = session_metadata.executable.clone();
+    let executable = session_definition.executable.clone();
     let env = inherit_env
         .set(session_class)
         .merge(user_info)
-        .merge(session_metadata)
+        .merge(session_definition)
         .merge_from(&session_manager);
 
     pam.set_env(env)?;
