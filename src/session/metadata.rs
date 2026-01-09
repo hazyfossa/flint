@@ -1,47 +1,65 @@
 use anyhow::{Context, Result, anyhow, bail};
+use bon::Builder;
+use facet::Facet;
+use facet_value::Value;
 use freedesktop_file_parser::{self as parser, EntryType};
 use fs_err::{DirEntry, File, read_dir};
-use im::HashMap;
-use serde::Deserialize;
 use shrinkwraprs::Shrinkwrap;
 
 use std::{
+    collections::HashMap,
     io::{self, ErrorKind, Read},
+    marker::PhantomData,
     path::PathBuf,
     vec,
 };
 
-use crate::environment::{EnvContainer, prelude::*};
+use crate::{
+    environment::{EnvContainerPartial, prelude::*},
+    session::{SessionType, SessionTypeTag},
+};
 
-#[derive(Deserialize, Clone)]
+#[derive(Facet, Clone, Builder)]
 pub struct SessionMetadata {
     pub display_name: Option<String>,
     pub description: Option<String>,
     pub executable: PathBuf,
+
+    #[facet(flatten)]
+    #[builder(default)]
+    pub other: HashMap<String, Value>,
 }
 
+// TODO
 #[derive(Shrinkwrap)]
-pub struct SessionDefinition {
+pub struct SessionDefinition<T: SessionType> {
+    _type: PhantomData<T>,
     pub id: String,
     #[shrinkwrap(main_field)]
-    metadata: SessionMetadata,
+    pub metadata: SessionMetadata,
 }
 
-impl SessionDefinition {
-    pub fn from_meta(id: String, metadata: SessionMetadata) -> Self {
-        Self { id, metadata }
+impl<T: SessionType> SessionDefinition<T> {
+    fn from_meta(id: String, metadata: SessionMetadata) -> Self {
+        Self {
+            _type: PhantomData,
+            id,
+            metadata,
+        }
     }
 }
 
 pub trait SessionMetadataLookup {
-    fn lookup_metadata(name: &str) -> Result<SessionDefinition>;
+    type T: SessionType;
+
+    fn lookup_metadata(&self, id: &str) -> Result<SessionDefinition<Self::T>>;
 
     /// This function will return metadata for all available sessions
     /// It is currently not guaranteed that a session can be started for each entry
     /// I.e. the metadata can specify an executable that is unavailable.
     ///
     /// Entries with invalid metadata are silently discarded.
-    fn lookup_metadata_all() -> SessionMap;
+    fn lookup_metadata_all(&self) -> SessionMetadataMap<Self::T>;
 }
 
 pub trait FreedesktopMetadata {
@@ -73,17 +91,17 @@ fn parse_freedesktop_file(file: &mut File) -> Result<SessionDefinition> {
         .ok_or(anyhow!("Session does not define an executable"))?
         .into();
 
-    let metadata = SessionMetadata {
-        display_name: Some(parsed.name.default),
-        description: parsed.comment.map(|x| x.default),
-        executable,
-    };
+    let metadata = SessionMetadata::builder()
+        .display_name(parsed.name.default)
+        .maybe_description(parsed.comment.map(|x| x.default))
+        .executable(executable)
+        .build();
 
     Ok(SessionDefinition { id, metadata })
 }
 
 impl<T: FreedesktopMetadata> SessionMetadataLookup for T {
-    fn lookup_metadata(id: &str) -> Result<SessionDefinition> {
+    fn lookup_metadata(&self, id: &str) -> Result<SessionDefinition> {
         let path = PathBuf::from(Self::LOOKUP_PATH).join(format!("{id}.desktop"));
 
         let mut file = File::open(path).map_err(|e| match e.kind() {
@@ -94,12 +112,12 @@ impl<T: FreedesktopMetadata> SessionMetadataLookup for T {
         parse_freedesktop_file(&mut file).context("Session definition is incorrect")
     }
 
-    fn lookup_metadata_all() -> SessionMap {
+    fn lookup_metadata_all(&self) -> SessionMetadataMap {
         // TODO: consider reporting errors on parsing failure
 
         let dir = match read_dir(Self::LOOKUP_PATH) {
             Ok(dir) => dir,
-            Err(_) => return SessionMap::new(),
+            Err(_) => return SessionMetadataMap::new(),
         };
 
         fn files(entry: io::Result<DirEntry>) -> Option<File> {
@@ -145,8 +163,8 @@ impl EnvParser for SessionCompositionEnv {
     }
 }
 
-impl EnvContainer for SessionDefinition {
-    fn apply_as_container(self, env: Env) -> Env {
+impl EnvContainerPartial for SessionDefinition {
+    fn apply_as_container(&self, env: Env) -> Env {
         // TODO: is this correct per spec?
         let name = self.display_name.as_ref().unwrap_or(&self.id);
 
@@ -155,48 +173,68 @@ impl EnvContainer for SessionDefinition {
     }
 }
 
-#[derive(Deserialize, Clone)]
-pub struct SessionMap(HashMap<String, SessionMetadata>);
+#[derive(Facet, Clone, Default)]
+pub struct SessionMetadataMap<T: SessionType> {
+    _type: PhantomData<T>,
+    entries: HashMap<String, SessionMetadata>,
+}
 
-impl SessionMap {
-    pub fn new() -> Self {
-        Self(HashMap::new())
+impl<T: SessionType> SessionMetadataMap<T> {
+    pub fn new(tag: SessionTypeTag) -> Self {
+        Self {
+            tag,
+            entries: HashMap::new(),
+        }
     }
 
     pub fn get(&self, id: &str) -> Option<SessionDefinition> {
-        self.0
-            .get(id)
-            .map(|meta| SessionDefinition::from_meta(id.to_string(), meta.clone()))
+        self.entries.get(id).map(|meta| SessionDefinition {
+            tag: self.tag.clone(), // TODO: no clone
+            id: id.to_string(),
+            metadata: meta.clone(),
+        })
     }
 
-    pub fn union(self, other: SessionMap) -> SessionMap {
-        Self(self.0.union(other.0))
+    pub fn extend(&mut self, other: SessionMetadataMap) {
+        // TODO: this would be compile-time if we haven't dropped session typestate
+        // in favor of runtime resolution
+        if self.tag != other.tag {
+            panic!(
+                "Attempted merging metadata maps of different session types: {} + {}",
+                self.tag, other.tag
+            )
+        }
+
+        self.entries.extend(other.entries)
     }
 
-    pub fn update(&mut self, value: SessionDefinition) -> Self {
-        Self(self.0.update(value.id, value.metadata))
-    }
-}
-
-impl FromIterator<SessionDefinition> for SessionMap {
-    fn from_iter<T: IntoIterator<Item = SessionDefinition>>(iter: T) -> Self {
-        Self(
-            iter.into_iter()
-                .map(|meta| (meta.id.clone(), meta.clone() as _))
-                .collect(),
-        )
-    }
-}
-
-impl IntoIterator for SessionMap {
-    type IntoIter = std::vec::IntoIter<SessionDefinition>;
-    type Item = SessionDefinition;
-
-    fn into_iter(self) -> Self::IntoIter {
-        self.0
-            .iter()
-            .map(|(k, v)| SessionDefinition::from_meta(k.to_string(), v.clone()))
-            .collect::<Vec<_>>()
-            .into_iter()
+    pub fn insert(&mut self, value: SessionDefinition) {
+        self.entries.insert(value.id, value.metadata);
     }
 }
+
+// impl FromIterator<SessionDefinition> for SessionMetadataMap {
+//     fn from_iter<T: IntoIterator<Item = SessionDefinition>>(iter: T) -> Self {
+//         Self(
+//             iter.into_iter()
+//                 .map(|meta| (meta.id.clone(), meta.clone() as _))
+//                 .collect(),
+//         )
+//     }
+// }
+
+// impl IntoIterator for SessionMetadataMap {
+//     type IntoIter = std::vec::IntoIter<SessionDefinition>;
+//     type Item = SessionDefinition;
+
+//     fn into_iter(self) -> Self::IntoIter {
+//         self.0
+//             .iter()
+//             .map(|(k, v)| SessionDefinition {
+//                 id: k.to_string(),
+//                 metadata: v.clone(),
+//             })
+//             .collect::<Vec<_>>()
+//             .into_iter()
+//     }
+// }

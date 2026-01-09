@@ -1,6 +1,7 @@
 mod auth;
 
 use anyhow::{Context, Result, anyhow};
+use facet::Facet;
 use tokio::{
     io::{AsyncBufReadExt, BufReader},
     net::unix::pipe,
@@ -12,12 +13,11 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use super::define::prelude::*;
-
 use auth::XAuthorityManager;
 
 use crate::{
     environment::prelude::*,
+    session::{SessionType, manager::SessionContext, metadata::FreedesktopMetadata},
     utils::{
         fd::{CommandFdCtxExt, FdContext},
         misc::OsStringExt,
@@ -105,26 +105,24 @@ impl DisplayReceiver {
 //     }
 // }
 
-pub struct Session;
-
-impl metadata::FreedesktopMetadata for Session {
-    const LOOKUP_PATH: &str = "/usr/share/xsessions";
-}
-
-#[derive(Deserialize)]
-#[serde(default)]
-pub struct Config {
+#[derive(Facet)]
+#[facet(default)]
+pub struct SessionConfig {
     xorg_path: PathBuf,
     lock_authority: bool,
 }
 
-impl Default for Config {
+impl Default for SessionConfig {
     fn default() -> Self {
         Self {
             xorg_path: PathBuf::from(DEFAULT_XORG_PATH),
             lock_authority: true,
         }
     }
+}
+
+impl FreedesktopMetadata for SessionConfig {
+    const LOOKUP_PATH: &str = "/usr/share/xsessions";
 }
 
 fn spawn_server(
@@ -136,8 +134,8 @@ fn spawn_server(
 
     let mut command = Command::new(path);
 
-    if let Some(terminal) = &context.terminal {
-        command.arg(format!("vt{}", terminal.number.to_string()));
+    if let Some(vt) = &context.vt {
+        command.arg(format!("vt{}", vt.to_string()));
     }
 
     command
@@ -156,29 +154,26 @@ fn spawn_server(
     Ok(display_rx)
 }
 
-impl define::SessionType for Session {
-    const XDG_TYPE: &str = "x11";
+#[async_trait::async_trait]
+impl SessionType for SessionConfig {
+    fn tag(&self) -> &'static str {
+        "x11"
+    }
 
-    type ManagerConfig = Config;
-
-    async fn setup_session(
-        config: &Config,
-        context: &mut SessionContext,
-        executable: &Path,
-    ) -> Result<()> {
+    async fn setup_session(&self, context: &mut SessionContext, executable: &Path) -> Result<()> {
         // let window_path = WindowPath::previous_plus_vt(&context.env, &context.terminal.number)?;
 
-        let authority_manager = XAuthorityManager::new(context, config.lock_authority)
+        let authority_manager = XAuthorityManager::new(context, self.lock_authority)
             .context("Failed to setup authority manager")?;
 
         let server_authority = authority_manager
             .setup_server()
             .context("Failed to define server authority")?;
 
-        let future_display = spawn_server(&config.xorg_path, server_authority, context)?;
+        let server = spawn_server(&self.xorg_path, server_authority, context)?;
 
         // NOTE: this will block until the X server is ready
-        let display = future_display.display().await?;
+        let display = server.display().await?;
 
         let client_authority = authority_manager
             .setup_client(&display)

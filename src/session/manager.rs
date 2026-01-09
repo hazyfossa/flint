@@ -1,22 +1,22 @@
 use anyhow::{Context, Result};
-use rustix::process::{self, Signal};
-use serde::Deserialize;
+use bon::{bon, builder};
+use facet::Facet;
 use shrinkwraprs::Shrinkwrap;
 use tokio::{process::Command, sync::mpsc};
 
-use std::{any::Any, path::Path, process::ExitStatus};
+use std::{any::Any, collections::HashMap};
 
 use crate::{
-    environment::{EnvContainer, EnvRecipient},
+    environment::{EnvContainerPartial, prelude::*},
     login::context::LoginContext,
     session::{
-        define::SessionType,
-        metadata::{SessionDefinition, SessionMap},
+        SessionInner, SessionType, SessionTypeTag,
+        metadata::{SessionDefinition, SessionMetadataMap, Tagged},
     },
     utils::config::Config,
 };
 
-type ExitReason = String;
+pub type ExitReason = String;
 
 #[derive(Shrinkwrap)]
 #[shrinkwrap(mutable)]
@@ -25,93 +25,21 @@ pub struct SessionContext {
     pub login_context: LoginContext,
     pub shutdown_tx: mpsc::Sender<ExitReason>,
 
-    resources: Vec<Box<dyn Any>>,
-}
-
-async fn handle_session_subprocess(cmd: Command, shutdown_tx: mpsc::Sender<ExitReason>) {
-    // TODO: stdio handling
-
-    let program_name = cmd.as_std().get_program().to_owned();
-
-    async fn handler(mut cmd: Command) -> Result<ExitStatus> {
-        let mut wait_token = cmd.spawn()?;
-
-        let exit_code = wait_token.wait().await?;
-        Ok(exit_code)
-    }
-
-    let ret = match handler(cmd).await {
-        Ok(exit_status) => format!("{program_name:?} exited with {exit_status}"),
-        Err(error) => format!("Error while handling {program_name:?}:\n{error}"),
-    };
-
-    // NOTE: we ignore error on send here, as if the shutdown channel is closed
-    // we're most likely already shutting down
-    let _ = shutdown_tx.send(ret).await;
+    resources: Vec<Box<dyn Any + Send>>,
 }
 
 impl SessionContext {
-    pub fn persist(&mut self, resource: Box<dyn Any>) {
+    pub fn persist(&mut self, resource: Box<dyn Any + Send>) {
         self.resources.push(resource);
     }
 
-    pub fn update_env<E: EnvContainer>(&mut self, variables: E) {
-        self.login_context.env = self.login_context.env.clone().merge(variables)
-    }
-
-    pub fn spawn(&self, mut cmd: Command) -> Result<()> {
-        if let Some(switch_user) = &self.user {
-            cmd.uid(switch_user.uid).gid(switch_user.gid);
-        }
-
-        unsafe {
-            cmd.pre_exec(|| {
-                process::set_parent_process_death_signal(Some(Signal::TERM))?;
-                Ok(())
-            });
-        }
-
-        cmd.set_env(self.env.clone()).unwrap();
-
-        let shutdown_tx = self.shutdown_tx.clone();
-        tokio::spawn(handle_session_subprocess(cmd, shutdown_tx));
-
-        Ok(())
-    }
-}
-
-#[derive(Shrinkwrap)]
-#[shrinkwrap(mutable)]
-struct SessionBuilder {
-    #[shrinkwrap(main_field)]
-    context: SessionContext,
-    shutdown_rx: mpsc::Receiver<ExitReason>,
-}
-
-impl SessionBuilder {
-    fn new(login_context: LoginContext) -> Self {
-        let (shutdown_tx, shutdown_rx) = mpsc::channel(1);
-
-        Self {
-            shutdown_rx,
-            context: SessionContext {
-                login_context,
-                shutdown_tx,
-                resources: Vec::new(),
-            },
-        }
-    }
-
-    fn finish(self) -> SessionInstance {
-        SessionInstance {
-            resources: self.context.resources,
-            shutdown_rx: self.shutdown_rx,
-        }
+    pub fn spawn(&self, cmd: Command) -> Result<()> {
+        self.login_context.spawn(cmd, self.shutdown_tx.clone())
     }
 }
 
 pub struct SessionInstance {
-    resources: Vec<Box<dyn Any>>,
+    resources: Vec<Box<dyn Any + Send>>,
     shutdown_rx: mpsc::Receiver<ExitReason>,
 }
 
@@ -128,58 +56,80 @@ impl SessionInstance {
     }
 }
 
-#[derive(Deserialize)]
-pub struct SessionManager<T: SessionType> {
-    #[serde(flatten)]
-    config: T::ManagerConfig,
-    #[serde(rename = "entry")]
-    entries: SessionMap,
+#[derive(Shrinkwrap)]
+struct SessionData {
+    #[shrinkwrap(main_field)]
+    inner: SessionInner,
+    config_entries: SessionMetadataMap,
 }
 
-impl<T: SessionType> SessionManager<T> {
-    pub fn new_from_config(config: &Config) -> Result<Self> {
-        Ok(match config.sessions.get(T::XDG_TYPE) {
-            Some(session_config) => session_config
-                .clone()
-                .try_into()
-                .context("Config error")
-                .context(format!("Invalid config for \"[session.{}]\"", T::XDG_TYPE))?,
+impl SessionData {
+    fn parse(tag: &SessionTypeTag, config: &Config) -> Result<Self> {
+        // TODO: no clone
+        let session_cfg = config.sessions.get(tag).cloned().unwrap_or_default();
+        let inner = SessionInner::parse(tag, session_cfg.config)?;
+        let config_entries = session_cfg.entries;
 
-            None => Self {
-                config: T::ManagerConfig::default(),
-                entries: SessionMap::new(),
-            },
+        Ok(Self {
+            inner,
+            config_entries,
         })
     }
+}
 
-    pub async fn spawn_session(
-        &self,
-        context: LoginContext,
-        executable: &Path,
-    ) -> Result<SessionInstance> {
-        let mut builder = SessionBuilder::new(context);
+pub struct SessionManager {
+    data: HashMap<SessionTypeTag<String>, SessionData>,
+}
 
-        T::setup_session(&self.config, &mut builder, executable).await?;
+#[bon]
+impl SessionManager {
+    #[builder]
+    pub fn new(config: &Config, load_only: Option<&[&SessionTypeTag]>) -> Result<Self> {
+        let mut data = HashMap::new();
+        let load_types = load_only.unwrap_or(crate::session::ALL_TAGS);
 
-        // TODO: is this the right place?
-        if let Some(terminal) = &builder.terminal {
-            terminal
-                .activate(T::VT_RENDER_MODE)
-                .context("Failed to swtich to session VT")?;
+        for session_type in load_types {
+            data.insert(
+                session_type.to_string(),
+                SessionData::parse(&session_type, config)?,
+            );
         }
 
-        Ok(builder.finish())
+        Ok(Self { data })
     }
 
-    pub fn lookup_metadata(&self, name: &str) -> Result<SessionDefinition> {
-        if let Some(internal_entry) = self.entries.get(name) {
-            return Ok(internal_entry);
+    pub async fn run(
+        &self,
+        tag: Option<&SessionTypeTag>,
+        login_context: LoginContext,
+        definition: &SessionDefinition,
+    ) -> Result<SessionInstance> {
+        let session_manager = self.resolve_session(&definition.id, definition.)?;
+
+        let (shutdown_tx, shutdown_rx) = mpsc::channel(1);
+
+        let mut context = SessionContext {
+            shutdown_tx,
+            login_context,
+            resources: Vec::new(),
         };
 
-        T::lookup_metadata(&name)
-    }
+        session_manager
+            .setup_session(&mut context, &definition.executable)
+            .await?;
 
-    pub fn lookup_metadata_all(&self) -> SessionMap {
-        self.entries.clone().union(T::lookup_metadata_all())
+        Ok(SessionInstance {
+            resources: context.resources,
+            shutdown_rx,
+        })
+    }
+}
+
+define_env!("XDG_SESSION_TYPE", pub SessionTypeEnv(SessionTypeTag<String>));
+env_parser_auto!(SessionTypeEnv);
+
+impl EnvContainerPartial for SessionData {
+    fn apply_as_container(&self, env: Env) -> Env {
+        env.set(SessionTypeEnv(self.tag().to_string()))
     }
 }

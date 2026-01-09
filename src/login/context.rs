@@ -3,7 +3,7 @@ use shrinkwraprs::Shrinkwrap;
 
 use crate::{
     environment::{EnvContainer, prelude::*},
-    login::{tty::Terminal, users::UserID},
+    login::users::UserID,
     utils::runtime_dir::RuntimeDirManager,
 };
 
@@ -82,7 +82,7 @@ impl EnvParser for SessionClass {
 }
 
 pub struct LoginContext {
-    pub terminal: Option<Terminal>,
+    pub vt: Option<VtNumber>,
     pub seat: Seat,
 
     pub env: Env,
@@ -92,17 +92,12 @@ pub struct LoginContext {
 }
 
 impl LoginContext {
-    pub fn new(
-        env: Env,
-        seat: Seat,
-        terminal: Option<Terminal>,
-        switch_user: UserID,
-    ) -> Result<Self> {
+    pub fn new(env: Env, seat: Seat, vt: Option<VtNumber>, switch_user: UserID) -> Result<Self> {
         let runtime_dir_manager =
             RuntimeDirManager::from_env(&env).context("Failed to create runtime dir manager")?;
 
         Ok(Self {
-            terminal,
+            vt,
             seat,
             env,
             user: Some(switch_user),
@@ -114,23 +109,25 @@ impl LoginContext {
         let runtime_dir_manager =
             RuntimeDirManager::from_env(&env).context("Failed to create runtime dir manager")?;
 
-        let vt_number = env.pull::<VtNumber>().context(
+        // TODO: is this correct?
+        let vt = env.pull::<VtNumber>().context(
             "Cannot take over current login context.
         Most likely you are already running a graphical session.",
         )?;
 
-        let terminal =
-            Terminal::current(vt_number).context("Cannot open current terminal (interactively)")?;
-
         let seat = env.pull::<Seat>().unwrap_or_default();
 
         Ok(Self {
-            terminal: Some(terminal),
+            vt: Some(vt),
             seat,
             env,
             user: None,
             runtime_dir_manager,
         })
+    }
+
+    pub fn update_env<E: EnvContainer>(&mut self, variables: E) {
+        self.env = self.env.clone().merge(variables);
     }
 }
 

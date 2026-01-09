@@ -1,36 +1,40 @@
 use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result, anyhow};
+use facet::Facet;
 use tokio::process::Command;
 
-use super::define::prelude::*;
 use crate::{
-    login::{VtRenderMode, users::env::Shell},
-    session::metadata::{SessionDefinition, SessionMetadata},
+    login::{VtRenderMode, tty::Terminal, users::env::Shell},
+    session::{
+        SessionType,
+        manager::SessionContext,
+        metadata::{SessionDefinition, SessionMetadata, SessionMetadataLookup, SessionMetadataMap},
+    },
 };
 
-pub struct Session;
+#[derive(Default, Facet)]
+#[facet(default)]
+pub struct SessionConfig;
 
-#[derive(Default, Deserialize)]
-#[serde(default)]
-pub struct Config {}
+#[async_trait::async_trait]
+impl SessionType for SessionConfig {
+    fn tag(&self) -> &'static str {
+        "tty"
+    }
 
-impl define::SessionType for Session {
-    const XDG_TYPE: &str = "tty";
+    fn vt_render_mode(&self) -> VtRenderMode {
+        VtRenderMode::Text
+    }
 
-    type ManagerConfig = Config;
-
-    const VT_RENDER_MODE: VtRenderMode = VtRenderMode::Text;
-
-    async fn setup_session(
-        _config: &Config,
-        context: &mut SessionContext,
-        executable: &Path,
-    ) -> Result<()> {
-        let terminal = context
-            .terminal
+    async fn setup_session(&self, context: &mut SessionContext, executable: &Path) -> Result<()> {
+        // TODO: does it make sense to try and allocate one here?
+        let vt = context
+            .vt
             .take()
-            .ok_or(anyhow!("Failed to aqquire terminal from context"))?;
+            .ok_or(anyhow!("Cannot start a TTY session without a VT"))?;
+
+        let terminal = Terminal::new(vt).context("Cannot open VT by number")?;
 
         let executable = if executable == PathBuf::from("<shell_env>") {
             &*context
@@ -55,18 +59,18 @@ impl define::SessionType for Session {
 }
 
 fn special_meta_shell() -> SessionDefinition {
-    SessionDefinition::from_meta(
-        "shell".to_string(),
-        SessionMetadata {
-            display_name: None,
-            description: Some("Default shell as set for the target user".to_string()),
-            executable: PathBuf::from("<shell_env>"),
-        },
-    )
+    SessionDefinition {
+        tag: "tty".to_string(),
+        id: "shell".to_string(),
+        metadata: SessionMetadata::builder()
+            .description("Default shell as set for the target user".into())
+            .executable("<shell_env>".into())
+            .build(),
+    }
 }
 
-impl metadata::SessionMetadataLookup for Session {
-    fn lookup_metadata(name: &str) -> Result<SessionDefinition> {
+impl SessionMetadataLookup for SessionConfig {
+    fn lookup_metadata(&self, name: &str) -> Result<SessionDefinition> {
         match name {
             "shell" => Ok(special_meta_shell()),
 
@@ -77,10 +81,12 @@ impl metadata::SessionMetadataLookup for Session {
         }
     }
 
-    fn lookup_metadata_all() -> SessionMap {
+    fn lookup_metadata_all(&self) -> SessionMetadataMap {
         // NOTE: at least debian provides a list of valid shells
 
         // This is a hack
-        SessionMap::new().update(special_meta_shell())
+        let mut map = SessionMetadataMap::new();
+        map.insert(special_meta_shell());
+        map
     }
 }

@@ -11,13 +11,13 @@ use crate::{
         tty::{Terminal, VtNumber},
         users::UserInfoProvider,
     },
-    session::{define::SessionType, manager::SessionManager, metadata::SessionDefinition},
+    session::{SessionType, SessionTypeData, metadata::SessionDefinition},
 };
 
 #[allow(dead_code)]
 // NOTE: while technically PAM can query for a username
 // for now we work around that
-async fn login<T: SessionType>(
+async fn login(
     display: impl PamDisplay,
 
     user_info_provider: impl UserInfoProvider,
@@ -28,7 +28,7 @@ async fn login<T: SessionType>(
     seat: Seat,
     vt_number: VtNumber,
 
-    session_manager: SessionManager<T>,
+    session_manager: SessionTypeData,
     session_class: SessionClass,
     session_definition: SessionDefinition,
 
@@ -48,17 +48,13 @@ async fn login<T: SessionType>(
 
     process::setsid().context("Failed to become a session leader process")?;
 
-    let executable = session_definition.executable.clone();
     let env = inherit_env
         .set(session_class)
         .merge(user_info)
-        .merge(session_definition)
+        .merge_from(&session_definition)
         .merge_from(&session_manager);
 
-    pam.set_env(env)?;
-    pam.open_session()?;
-    let env = pam.get_env()?;
-
+    let vt_mode = session_manager.vt_render_mode();
     let terminal = Terminal::new(vt_number).context("Failed to provision an active VT")?;
     terminal
         .set_as_current()
@@ -67,10 +63,18 @@ async fn login<T: SessionType>(
     pam.set_item(PamItemType::TTY, &vt_number.to_tty_string())?;
     let env = env.set(vt_number);
 
-    let context = LoginContext::new(env, seat, Some(terminal), user_id)
+    pam.set_env(env)?;
+    pam.open_session()?;
+    let env = pam.get_env()?;
+
+    let context = LoginContext::new(env, seat, Some(vt_number), user_id)
         .context("Cannot establish a login context")?;
 
-    let session = session_manager.spawn_session(context, &executable).await?;
+    let session = session_manager.run(context, &session_definition).await?;
+
+    terminal
+        .activate(vt_mode)
+        .context("failed to activate VT")?;
 
     let exit_reason = session.join().await?;
 

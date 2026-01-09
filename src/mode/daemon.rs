@@ -1,9 +1,9 @@
 use anyhow::{Context, Result, anyhow};
-use serde::Deserialize;
+use facet::Facet;
 
 use crate::{systemd, utils::config::Config};
 
-#[derive(Debug, Deserialize)]
+#[derive(Facet)]
 pub struct DaemonConfig {
     greeter: String,
 }

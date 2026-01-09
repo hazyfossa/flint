@@ -1,8 +1,8 @@
 use std::path::PathBuf;
 
-use serde::Deserialize;
+use facet::Facet;
 
-#[derive(Debug, Deserialize)]
+#[derive(Facet)]
 pub struct GreeterConfig {
     session: Option<String>,
     executable: PathBuf,

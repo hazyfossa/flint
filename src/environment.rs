@@ -1,7 +1,6 @@
-use std::{env, ffi::OsString, ops::Deref};
+use std::{collections::HashMap, env, ffi::OsString, ops::Deref};
 
 use anyhow::{Context, Result, anyhow};
-use im::HashMap;
 use tokio::process::Command;
 
 pub mod prelude {
@@ -126,29 +125,24 @@ impl Env {
     }
 
     pub fn pull<E: EnvVar>(&mut self) -> Result<E> {
-        let (value, state) = self
+        let value = self
             .state
-            .extract(E::KEY)
+            .get(E::KEY)
             .ok_or(anyhow!("Variable {} does not exist", E::KEY))?;
 
-        self.state = state;
-
-        E::deserialize(value).context(format!(
+        E::deserialize(value.clone()).context(format!(
             "Variable {} exists, but contents are invalid",
             E::KEY
         ))
     }
 
-    fn update_untyped(self, k: String, v: OsString) -> Self {
-        Self {
-            state: self.state.update(k, v),
-        }
+    fn update_untyped(&mut self, k: String, v: OsString) {
+        self.state.insert(k, v);
     }
 
-    pub fn set<E: EnvVar>(self, var: E) -> Self {
-        Self {
-            state: self.state.update(E::KEY.to_string(), var.serialize()),
-        }
+    pub fn set<E: EnvVar>(mut self, var: E) -> Self {
+        self.state.insert(E::KEY.to_string(), var.serialize());
+        self
     }
 
     pub fn merge<E: EnvContainer>(self, container: E) -> Self {
@@ -201,24 +195,24 @@ impl<T: EnvVar> EnvContainer for T {
 }
 
 impl EnvContainer for Env {
-    fn apply_as_container(self, env: Env) -> Env {
-        Self {
-            state: env.state.union(self.state),
-        }
+    fn apply_as_container(self, mut env: Env) -> Env {
+        env.state.extend(self.state);
+        Self { state: env.state }
     }
 }
 
 // NOTE: this is for untyped variables
 // you would usually prefer typed ones instead
 impl EnvContainer for &'static str {
-    fn apply_as_container(self, env: Env) -> Env {
+    fn apply_as_container(self, mut env: Env) -> Env {
         let parts: Vec<&str> = self.split("=").collect();
         if parts.len() != 2 {
             panic!("Invalid environment update: {self}");
         }
 
         let (key, value) = (parts[0], parts[1]);
-        env.update_untyped(key.to_string(), value.into())
+        env.update_untyped(key.to_string(), value.into());
+        env
     }
 }
 

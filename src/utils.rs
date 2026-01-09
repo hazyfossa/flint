@@ -208,23 +208,32 @@ pub mod config {
     };
 
     use anyhow::{Context, Result};
+    use facet::Facet;
+    use facet_value::Value;
     use fs_err::File;
     use pico_args::Arguments;
-    use serde::Deserialize;
-    use toml::Table;
 
-    use crate::{greet::GreeterConfig, mode::daemon::DaemonConfig};
+    use crate::{
+        greet::GreeterConfig, mode::daemon::DaemonConfig, session::metadata::SessionMetadataMap,
+    };
 
-    type ParseLater = Table;
+    #[derive(Facet, Default, Clone)]
+    pub struct SessionTypeConfig {
+        #[facet(flatten)]
+        pub config: Value,
+        #[facet(rename = "session")]
+        pub entries: SessionMetadataMap,
+    }
 
-    #[derive(Debug, Deserialize, Default)]
+    #[derive(Facet, Default)]
     pub struct Config {
         #[allow(dead_code)]
         version: Option<String>,
-        #[serde(rename = "session")]
-        pub sessions: HashMap<String, ParseLater>,
-        #[serde(rename = "greeter")]
+        #[facet(rename = "greeter")]
         pub greeters: HashMap<String, GreeterConfig>,
+        #[facet(flatten)]
+        pub sessions: HashMap<String, SessionTypeConfig>,
+        #[facet(default)]
         pub daemon: Option<DaemonConfig>,
     }
 
@@ -248,7 +257,7 @@ pub mod config {
             let mut buf = Vec::new();
             file.read_to_end(&mut buf)?;
 
-            Ok(toml::from_slice(&buf).context("Invalid config")?)
+            Ok(facet_kdl::from_slice(&buf)?)
         }
     }
 }

@@ -2,15 +2,10 @@ use anyhow::{Context, Result, anyhow};
 use pico_args::Arguments;
 
 use crate::{
-    environment,
-    login::context::LoginContext,
-    session::{define::SessionType, dispatch_session, manager::SessionManager},
-    utils::config::Config,
+    environment, login::context::LoginContext, session::SessionManager, utils::config::Config,
 };
 
-async fn list<Session: SessionType>(config: &Config) -> Result<()> {
-    let manager = SessionManager::<Session>::new_from_config(config)?;
-
+async fn list(config: &Config) -> Result<()> {
     for entry in manager.lookup_metadata_all() {
         let id = &entry.id;
         print!("[{id}]");
@@ -31,9 +26,7 @@ async fn list<Session: SessionType>(config: &Config) -> Result<()> {
     Ok(())
 }
 
-async fn spawn_session<Session: SessionType>(config: &Config, mut args: Arguments) -> Result<()> {
-    let manager = SessionManager::<Session>::new_from_config(config)?;
-
+async fn spawn_session(manager: SessionTypeData, mut args: Arguments) -> Result<()> {
     #[rustfmt::skip]
     let name: String = args.free_from_str().map_err(|_| {
         anyhow!("No session name provided.
@@ -44,7 +37,7 @@ async fn spawn_session<Session: SessionType>(config: &Config, mut args: Argument
     let metadata = manager.lookup_metadata(&name)?;
 
     let session = manager
-        .spawn_session(context, &metadata.executable)
+        .run(context, &metadata.executable)
         .await
         .context("Failed to start session")?;
 
@@ -58,13 +51,15 @@ async fn spawn_session<Session: SessionType>(config: &Config, mut args: Argument
 }
 
 pub async fn run(subcommand: &str, mut args: Arguments, config: Config) -> Result<()> {
-    let session_type = args
-        .opt_value_from_str(["-s", "--session-type"])?
-        .unwrap_or("x11".to_string());
+    let manager = SessionTypeData::parse().config(&config);
+
+    if let Some(value) = args.opt_value_from_str(["-s", "--session-type"])? {
+        manager = manager.tag(value);
+    };
 
     match subcommand {
-        "run" => dispatch_session!(session_type.as_str() => spawn_session(&config, args)),
-        "list" => dispatch_session!(session_type.as_str() => list(&config)),
+        "run" => spawn_session(session_type_tag, &config, args).await,
+        "list" => list(session_type_tag, &config).await,
         other => Err(anyhow!("Invalid subcommand: {other}")),
     }
 }

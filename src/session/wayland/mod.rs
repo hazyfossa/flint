@@ -2,40 +2,31 @@
 use std::path::Path;
 
 use anyhow::Result;
+use facet::Facet;
 use tokio::process::Command;
 
-use super::define::prelude::*;
-use crate::environment::prelude::*;
+use crate::{
+    environment::prelude::*,
+    session::{SessionType, manager::SessionContext, metadata::FreedesktopMetadata},
+};
 
 define_env!("WAYLAND_DISPLAY", pub Display(String));
 env_parser_auto!(Display);
 
-pub struct Session;
+#[derive(Facet, Default)]
+pub struct SessionConfig;
 
-impl metadata::FreedesktopMetadata for Session {
+impl FreedesktopMetadata for SessionConfig {
     const LOOKUP_PATH: &str = "/usr/share/wayland-sessions/";
 }
 
-#[derive(Deserialize)]
-#[serde(default)]
-pub struct Config {}
-
-impl Default for Config {
-    fn default() -> Self {
-        Self {}
+#[async_trait::async_trait]
+impl SessionType for SessionConfig {
+    fn tag(&self) -> &'static str {
+        "wayland"
     }
-}
 
-impl define::SessionType for Session {
-    const XDG_TYPE: &str = "wayland";
-
-    type ManagerConfig = Config;
-
-    async fn setup_session(
-        _config: &Config,
-        context: &mut SessionContext,
-        executable: &Path,
-    ) -> Result<()> {
+    async fn setup_session(&self, context: &mut SessionContext, executable: &Path) -> Result<()> {
         context.update_env((
             "MOZ_ENABLE_WAYLAND=1",
             "QT_QPA_PLATFORM=wayland",
