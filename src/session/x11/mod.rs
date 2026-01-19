@@ -17,7 +17,7 @@ use auth::XAuthorityManager;
 
 use crate::{
     environment::prelude::*,
-    session::{SessionType, manager::SessionContext, metadata::FreedesktopMetadata},
+    session::define::prelude::*,
     utils::{
         fd::{CommandFdCtxExt, FdContext},
         misc::OsStringExt,
@@ -107,12 +107,12 @@ impl DisplayReceiver {
 
 #[derive(Facet)]
 #[facet(default)]
-pub struct SessionConfig {
+pub struct SessionManager {
     xorg_path: PathBuf,
     lock_authority: bool,
 }
 
-impl Default for SessionConfig {
+impl Default for SessionManager {
     fn default() -> Self {
         Self {
             xorg_path: PathBuf::from(DEFAULT_XORG_PATH),
@@ -121,7 +121,7 @@ impl Default for SessionConfig {
     }
 }
 
-impl FreedesktopMetadata for SessionConfig {
+impl FreedesktopMetadata for SessionManager {
     const LOOKUP_PATH: &str = "/usr/share/xsessions";
 }
 
@@ -154,11 +154,8 @@ fn spawn_server(
     Ok(display_rx)
 }
 
-#[async_trait::async_trait]
-impl SessionType for SessionConfig {
-    fn tag(&self) -> &'static str {
-        "x11"
-    }
+impl SessionType for SessionManager {
+    const TAG: &SessionTypeTag<str> = "x11";
 
     async fn setup_session(&self, context: &mut SessionContext, executable: &Path) -> Result<()> {
         // let window_path = WindowPath::previous_plus_vt(&context.env, &context.terminal.number)?;

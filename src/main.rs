@@ -7,7 +7,7 @@ mod session;
 mod systemd;
 mod utils;
 
-use anyhow::Result;
+use anyhow::{Result, bail};
 use pico_args::Arguments;
 
 use crate::utils::config::Config;
@@ -24,7 +24,8 @@ async fn main() -> Result<()> {
     let config = Config::from_args(&mut args, &format!("/etc/{APP_NAME}.toml"))?;
 
     match args.subcommand()? {
-        Some(ref subcommand) => mode::cli::run(subcommand, args, config).await,
+        // Some(ref subcommand) => mode::cli::run(subcommand, args, config).await,
+        Some(_) => bail!("cli mode is not supported for now"),
         None => mode::daemon::run(config).await,
     }
 }

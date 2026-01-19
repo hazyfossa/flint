@@ -5,26 +5,20 @@ use anyhow::Result;
 use facet::Facet;
 use tokio::process::Command;
 
-use crate::{
-    environment::prelude::*,
-    session::{SessionType, manager::SessionContext, metadata::FreedesktopMetadata},
-};
+use crate::{environment::prelude::*, session::define::prelude::*};
 
 define_env!("WAYLAND_DISPLAY", pub Display(String));
 env_parser_auto!(Display);
 
 #[derive(Facet, Default)]
-pub struct SessionConfig;
+pub struct SessionManager;
 
-impl FreedesktopMetadata for SessionConfig {
+impl FreedesktopMetadata for SessionManager {
     const LOOKUP_PATH: &str = "/usr/share/wayland-sessions/";
 }
 
-#[async_trait::async_trait]
-impl SessionType for SessionConfig {
-    fn tag(&self) -> &'static str {
-        "wayland"
-    }
+impl SessionType for SessionManager {
+    const TAG: &SessionTypeTag<str> = "wayland";
 
     async fn setup_session(&self, context: &mut SessionContext, executable: &Path) -> Result<()> {
         context.update_env((

@@ -29,5 +29,3 @@ facet-kdl = { version = "0.42.0", features = ["fast"] }
 serde = "1.0.228"
 facet-value = "0.42.0"
 bon = "3.8.1"
-async-trait = "0.1.89"
-enum_dispatch = "0.3.13"

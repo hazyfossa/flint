@@ -1,19 +1,13 @@
 use anyhow::{Context, Result};
-use bon::{bon, builder};
-use facet::Facet;
 use shrinkwraprs::Shrinkwrap;
 use tokio::{process::Command, sync::mpsc};
 
-use std::{any::Any, collections::HashMap};
+use std::any::Any;
 
 use crate::{
     environment::{EnvContainerPartial, prelude::*},
     login::context::LoginContext,
-    session::{
-        SessionInner, SessionType, SessionTypeTag,
-        metadata::{SessionDefinition, SessionMetadataMap, Tagged},
-    },
-    utils::config::Config,
+    session::{Session, define::SessionTypeTag, metadata::SessionMetadata},
 };
 
 pub type ExitReason = String;
@@ -56,56 +50,15 @@ impl SessionInstance {
     }
 }
 
-#[derive(Shrinkwrap)]
-struct SessionData {
-    #[shrinkwrap(main_field)]
-    inner: SessionInner,
-    config_entries: SessionMetadataMap,
+// TODO: consider managing env separately, which will simplify the manager to (T, executable: PathBuf)
+
+pub struct SessionManager<T> {
+    definition: SessionMetadata<T>,
+    inner: T,
 }
 
-impl SessionData {
-    fn parse(tag: &SessionTypeTag, config: &Config) -> Result<Self> {
-        // TODO: no clone
-        let session_cfg = config.sessions.get(tag).cloned().unwrap_or_default();
-        let inner = SessionInner::parse(tag, session_cfg.config)?;
-        let config_entries = session_cfg.entries;
-
-        Ok(Self {
-            inner,
-            config_entries,
-        })
-    }
-}
-
-pub struct SessionManager {
-    data: HashMap<SessionTypeTag<String>, SessionData>,
-}
-
-#[bon]
-impl SessionManager {
-    #[builder]
-    pub fn new(config: &Config, load_only: Option<&[&SessionTypeTag]>) -> Result<Self> {
-        let mut data = HashMap::new();
-        let load_types = load_only.unwrap_or(crate::session::ALL_TAGS);
-
-        for session_type in load_types {
-            data.insert(
-                session_type.to_string(),
-                SessionData::parse(&session_type, config)?,
-            );
-        }
-
-        Ok(Self { data })
-    }
-
-    pub async fn run(
-        &self,
-        tag: Option<&SessionTypeTag>,
-        login_context: LoginContext,
-        definition: &SessionDefinition,
-    ) -> Result<SessionInstance> {
-        let session_manager = self.resolve_session(&definition.id, definition.)?;
-
+impl<T: Session> SessionManager<T> {
+    pub async fn run(&self, login_context: LoginContext) -> Result<SessionInstance> {
         let (shutdown_tx, shutdown_rx) = mpsc::channel(1);
 
         let mut context = SessionContext {
@@ -114,8 +67,8 @@ impl SessionManager {
             resources: Vec::new(),
         };
 
-        session_manager
-            .setup_session(&mut context, &definition.executable)
+        self.inner
+            .setup_session(&mut context, &self.definition.executable)
             .await?;
 
         Ok(SessionInstance {
@@ -125,11 +78,13 @@ impl SessionManager {
     }
 }
 
+// TODO: unified env
+
 define_env!("XDG_SESSION_TYPE", pub SessionTypeEnv(SessionTypeTag<String>));
 env_parser_auto!(SessionTypeEnv);
 
-impl EnvContainerPartial for SessionData {
+impl<T: Session> EnvContainerPartial for SessionManager<T> {
     fn apply_as_container(&self, env: Env) -> Env {
-        env.set(SessionTypeEnv(self.tag().to_string()))
+        env.set(SessionTypeEnv(T::TAG.to_string()))
     }
 }

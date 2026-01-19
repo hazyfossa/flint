@@ -7,25 +7,19 @@ use tokio::process::Command;
 use crate::{
     login::{VtRenderMode, tty::Terminal, users::env::Shell},
     session::{
-        SessionType,
-        manager::SessionContext,
-        metadata::{SessionDefinition, SessionMetadata, SessionMetadataLookup, SessionMetadataMap},
+        define::prelude::*,
+        metadata::{SessionMetadata, SessionMetadataLookup, SessionMetadataMap},
     },
 };
 
 #[derive(Default, Facet)]
 #[facet(default)]
-pub struct SessionConfig;
+pub struct SessionManager;
 
-#[async_trait::async_trait]
-impl SessionType for SessionConfig {
-    fn tag(&self) -> &'static str {
-        "tty"
-    }
+impl SessionType for SessionManager {
+    const TAG: &SessionTypeTag<str> = "tty";
 
-    fn vt_render_mode(&self) -> VtRenderMode {
-        VtRenderMode::Text
-    }
+    const VT_RENDER_MODE: VtRenderMode = VtRenderMode::Text;
 
     async fn setup_session(&self, context: &mut SessionContext, executable: &Path) -> Result<()> {
         // TODO: does it make sense to try and allocate one here?
@@ -58,19 +52,18 @@ impl SessionType for SessionConfig {
     }
 }
 
-fn special_meta_shell() -> SessionDefinition {
-    SessionDefinition {
-        tag: "tty".to_string(),
-        id: "shell".to_string(),
-        metadata: SessionMetadata::builder()
-            .description("Default shell as set for the target user".into())
-            .executable("<shell_env>".into())
-            .build(),
-    }
+fn special_meta_shell() -> SessionMetadata<SessionManager> {
+    SessionMetadata::builder()
+        .id("shell".into())
+        .description("Default shell as set for the target user".into())
+        .executable("<shell_env>".into())
+        .build()
 }
 
-impl SessionMetadataLookup for SessionConfig {
-    fn lookup_metadata(&self, name: &str) -> Result<SessionDefinition> {
+impl SessionMetadataLookup for SessionManager {
+    type T = SessionManager;
+
+    fn lookup_metadata(&self, name: &str) -> Result<SessionMetadata<Self::T>> {
         match name {
             "shell" => Ok(special_meta_shell()),
 
@@ -81,7 +74,7 @@ impl SessionMetadataLookup for SessionConfig {
         }
     }
 
-    fn lookup_metadata_all(&self) -> SessionMetadataMap {
+    fn lookup_metadata_all(&self) -> SessionMetadataMap<Self::T> {
         // NOTE: at least debian provides a list of valid shells
 
         // This is a hack

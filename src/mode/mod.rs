@@ -1,3 +1,3 @@
-pub mod cli;
+// pub mod cli;
 pub mod daemon;
 pub mod worker;

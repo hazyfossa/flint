@@ -11,13 +11,15 @@ use crate::{
         tty::{Terminal, VtNumber},
         users::UserInfoProvider,
     },
-    session::{SessionType, SessionTypeData, metadata::SessionDefinition},
+    session::{Session, manager::SessionManager},
 };
+
+// TODO: rewrite using the context infrastructure instead
 
 #[allow(dead_code)]
 // NOTE: while technically PAM can query for a username
 // for now we work around that
-async fn login(
+async fn login<T: Session>(
     display: impl PamDisplay,
 
     user_info_provider: impl UserInfoProvider,
@@ -28,9 +30,8 @@ async fn login(
     seat: Seat,
     vt_number: VtNumber,
 
-    session_manager: SessionTypeData,
+    session_manager: SessionManager<T>,
     session_class: SessionClass,
-    session_definition: SessionDefinition,
 
     require_auth: bool,
     silent: bool,
@@ -51,10 +52,8 @@ async fn login(
     let env = inherit_env
         .set(session_class)
         .merge(user_info)
-        .merge_from(&session_definition)
         .merge_from(&session_manager);
 
-    let vt_mode = session_manager.vt_render_mode();
     let terminal = Terminal::new(vt_number).context("Failed to provision an active VT")?;
     terminal
         .set_as_current()
@@ -70,10 +69,10 @@ async fn login(
     let context = LoginContext::new(env, seat, Some(vt_number), user_id)
         .context("Cannot establish a login context")?;
 
-    let session = session_manager.run(context, &session_definition).await?;
+    let session = session_manager.run(context).await?;
 
     terminal
-        .activate(vt_mode)
+        .activate(T::VT_RENDER_MODE)
         .context("failed to activate VT")?;
 
     let exit_reason = session.join().await?;

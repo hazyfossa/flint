@@ -209,21 +209,10 @@ pub mod config {
 
     use anyhow::{Context, Result};
     use facet::Facet;
-    use facet_value::Value;
     use fs_err::File;
     use pico_args::Arguments;
 
-    use crate::{
-        greet::GreeterConfig, mode::daemon::DaemonConfig, session::metadata::SessionMetadataMap,
-    };
-
-    #[derive(Facet, Default, Clone)]
-    pub struct SessionTypeConfig {
-        #[facet(flatten)]
-        pub config: Value,
-        #[facet(rename = "session")]
-        pub entries: SessionMetadataMap,
-    }
+    use crate::{greet::GreeterConfig, mode::daemon::DaemonConfig};
 
     #[derive(Facet, Default)]
     pub struct Config {
@@ -232,7 +221,7 @@ pub mod config {
         #[facet(rename = "greeter")]
         pub greeters: HashMap<String, GreeterConfig>,
         #[facet(flatten)]
-        pub sessions: HashMap<String, SessionTypeConfig>,
+        pub session_specific: crate::session::Config,
         #[facet(default)]
         pub daemon: Option<DaemonConfig>,
     }
@@ -259,5 +248,15 @@ pub mod config {
 
             Ok(facet_kdl::from_slice(&buf)?)
         }
+    }
+}
+
+pub mod macros {
+    #[macro_export]
+    macro_rules! trait_alias {
+        ($vis:vis $name:ident = $($for:tt)*) => {
+            $vis trait $name: $($for)* {}
+            impl<T: $($for)*> $name for T {}
+        };
     }
 }
