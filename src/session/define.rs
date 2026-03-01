@@ -11,7 +11,7 @@ pub mod prelude {
     pub use crate::session::{manager::SessionContext, metadata::FreedesktopMetadata};
 }
 
-trait_alias!(Config = for<'f> Facet<'f> + Default);
+trait_alias!(pub Config = for<'f> Facet<'f> + Default);
 
 pub trait SessionType: metadata::SessionMetadataLookup + Config {
     // This should equal xdg type if possible
@@ -26,7 +26,7 @@ pub trait SessionType: metadata::SessionMetadataLookup + Config {
     ) -> Result<()>;
 }
 
-pub type SessionTypeTag<T: AsRef<str> = String> = T;
+pub type SessionTypeTag<T = String> = T;
 
 pub use crate::_sessions as sessions;
 

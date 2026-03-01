@@ -2,6 +2,7 @@ use anyhow::{Context, Result, anyhow, bail};
 use bon::Builder;
 use facet::Facet;
 use freedesktop_file_parser::{self as parser, EntryType};
+// TODO: async dir iter
 use fs_err::{DirEntry, File, read_dir};
 
 use std::{
