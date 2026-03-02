@@ -41,7 +41,8 @@ impl super::context::LoginContext {
             });
         }
 
-        cmd.set_env(self.env.clone()).unwrap();
+        // TODO: systemd spawn
+        // cmd.set_env(self.env.clone()).unwrap();
         tokio::spawn(handle_session_subprocess(cmd, shutdown_tx));
 
         Ok(())

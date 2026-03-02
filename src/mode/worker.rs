@@ -11,7 +11,7 @@ use crate::{
         tty::{Terminal, VtNumber},
         users::UserInfoProvider,
     },
-    session::{Session, manager::SessionManager},
+    session::{SessionTypePlug, manager::SessionManager},
 };
 
 // TODO: rewrite using the context infrastructure instead
@@ -19,7 +19,7 @@ use crate::{
 #[allow(dead_code)]
 // NOTE: while technically PAM can query for a username
 // for now we work around that
-async fn login<T: Session>(
+async fn login<T: SessionTypePlug>(
     display: impl PamDisplay,
 
     user_info_provider: impl UserInfoProvider,

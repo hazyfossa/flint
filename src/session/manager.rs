@@ -7,7 +7,7 @@ use std::any::Any;
 use crate::{
     environment::define_env,
     login::context::LoginContext,
-    session::{Session, define::SessionTypeTag, metadata::SessionMetadata},
+    session::{SessionTypePlug, metadata::SessionMetadata},
 };
 
 pub type ExitReason = String;
@@ -57,7 +57,7 @@ pub struct SessionManager<T> {
     inner: T,
 }
 
-impl<T: Session> SessionManager<T> {
+impl<T: SessionTypePlug> SessionManager<T> {
     pub async fn run(&self, login_context: LoginContext) -> Result<SessionInstance> {
         let (shutdown_tx, shutdown_rx) = mpsc::channel(1);
 
@@ -80,4 +80,5 @@ impl<T: Session> SessionManager<T> {
 
 // TODO: unified env
 
-define_env!(pub SessionTypeEnv(SessionTypeTag) = parse "XDG_SESSION_TYPE");
+define_env!(pub SessionTypeEnv(String) = parse "XDG_SESSION_TYPE");
+// TODO: get from Plug type

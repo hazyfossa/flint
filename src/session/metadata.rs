@@ -14,7 +14,7 @@ use std::{
 
 use crate::{
     environment::{EnvironmentParse, define_env},
-    session::Session,
+    session::SessionTypePlug,
 };
 
 #[derive(Facet, Clone, Builder)]
@@ -27,7 +27,7 @@ pub struct SessionMetadata<T> {
 }
 
 pub trait SessionMetadataLookup {
-    type T: Session;
+    type T: SessionTypePlug;
 
     fn lookup_metadata(&self, id: &str) -> Result<SessionMetadata<Self::T>>;
 
@@ -78,7 +78,7 @@ fn parse_freedesktop_file<T>(file: &mut File) -> Result<SessionMetadata<T>> {
     Ok(metadata)
 }
 
-impl<T: FreedesktopMetadata + Session> SessionMetadataLookup for T {
+impl<T: FreedesktopMetadata + SessionTypePlug> SessionMetadataLookup for T {
     type T = Self;
 
     fn lookup_metadata(&self, id: &str) -> Result<SessionMetadata<Self::T>> {
@@ -141,7 +141,7 @@ pub struct SessionMetadataMap<T> {
     entries: HashMap<String, SessionMetadata<T>>,
 }
 
-impl<T: Session> SessionMetadataMap<T> {
+impl<T: SessionTypePlug> SessionMetadataMap<T> {
     pub fn new() -> Self {
         Self {
             entries: HashMap::new(),

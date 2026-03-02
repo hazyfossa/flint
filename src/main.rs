@@ -2,6 +2,7 @@ mod environment;
 mod greet;
 mod login;
 mod mode;
+mod plug;
 mod plymouth;
 mod session;
 mod systemd;

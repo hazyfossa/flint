@@ -2,10 +2,8 @@ use std::path::PathBuf;
 
 use facet::Facet;
 
-use crate::session::define::SessionTypeTag;
-
 #[derive(Facet)]
 pub struct GreeterConfig {
-    session: Option<SessionTypeTag>,
+    session: Option<String>, // TODO: tag types in plug?
     executable: PathBuf,
 }

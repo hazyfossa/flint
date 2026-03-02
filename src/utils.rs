@@ -237,7 +237,7 @@ pub mod config {
 pub mod macros {
     #[macro_export]
     macro_rules! trait_alias {
-        ($vis:vis $name:ident = $($for:tt)*) => {
+        ($vis:vis trait $name:ident = $($for:tt)*) => {
             $vis trait $name: $($for)* {}
             impl<T: $($for)*> $name for T {}
         };

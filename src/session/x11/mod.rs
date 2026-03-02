@@ -14,7 +14,7 @@ use auth::XAuthorityManager;
 
 use crate::{
     environment::{EnvironmentParse, EnvironmentVariable},
-    session::define::prelude::*,
+    session::prelude::*,
     utils::fd::{CommandFdCtxExt, FdContext},
 };
 
@@ -152,8 +152,6 @@ fn spawn_server(
 }
 
 impl SessionType for SessionManager {
-    const TAG: &SessionTypeTag<str> = "x11";
-
     async fn setup_session(&self, context: &mut SessionContext, executable: &Path) -> Result<()> {
         // let window_path = WindowPath::previous_plus_vt(&context.env, &context.terminal.number)?;
 

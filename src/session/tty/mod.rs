@@ -7,8 +7,8 @@ use tokio::process::Command;
 use crate::{
     login::{VtRenderMode, tty::Terminal, users::env::Shell},
     session::{
-        define::prelude::*,
         metadata::{SessionMetadata, SessionMetadataLookup, SessionMetadataMap},
+        prelude::*,
     },
 };
 
@@ -17,8 +17,6 @@ use crate::{
 pub struct SessionManager;
 
 impl SessionType for SessionManager {
-    const TAG: &SessionTypeTag<str> = "tty";
-
     const VT_RENDER_MODE: VtRenderMode = VtRenderMode::Text;
 
     async fn setup_session(&self, context: &mut SessionContext, executable: &Path) -> Result<()> {
