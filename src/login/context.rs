@@ -2,7 +2,7 @@ use anyhow::{Context, Result};
 use shrinkwraprs::Shrinkwrap;
 
 use crate::{
-    environment::{EnvContainer, prelude::*},
+    environment::{Env, EnvironmentParse, EnvironmentVariable, define_env},
     login::users::UserID,
     utils::runtime_dir::RuntimeDirManager,
 };
@@ -25,19 +25,27 @@ impl VtNumber {
     }
 }
 
-impl ToString for VtNumber {
-    fn to_string(&self) -> String {
+impl EnvironmentVariable for VtNumber {
+    const KEY: &str = "XDG_VTNR";
+}
+
+impl EnvironmentParse<String> for VtNumber {
+    fn env_serialize(self) -> String {
         self.0.to_string()
+    }
+
+    fn env_deserialize(raw: String) -> Result<Self> {
+        Ok(Self(raw.parse()?))
     }
 }
 
-impl EnvVar for VtNumber {
-    const KEY: &str = "XDG_VTNR";
-}
-env_parser_auto!(VtNumber);
+define_env!(pub Seat(String) = parse "XDG_SEAT");
 
-define_env!("XDG_SEAT", pub Seat(String));
-env_parser_auto!(Seat);
+impl Seat {
+    pub fn into_id(self) -> String {
+        self.0
+    }
+}
 
 impl Default for Seat {
     fn default() -> Self {
@@ -54,13 +62,13 @@ pub enum SessionClass {
     LockScreen,
 }
 
-impl EnvVar for SessionClass {
+impl EnvironmentVariable for SessionClass {
     const KEY: &str = "XDG_SESSION_CLASS";
 }
 
-impl EnvParser for SessionClass {
-    fn serialize(&self) -> std::ffi::OsString {
-        match *self {
+impl EnvironmentParse<String> for SessionClass {
+    fn env_serialize(self) -> String {
+        match self {
             Self::User { early, light } => {
                 let mut string = "user".to_string();
                 if early {
@@ -69,14 +77,14 @@ impl EnvParser for SessionClass {
                 if light {
                     string += "-light"
                 }
-                string.into()
+                string
             }
-            Self::Greeter => "greeter".into(),
-            Self::LockScreen => "lock-screen".into(),
+            Self::Greeter => "greeter".to_string(),
+            Self::LockScreen => "lock-screen".to_string(),
         }
     }
 
-    fn deserialize(_value: std::ffi::OsString) -> Result<Self> {
+    fn env_deserialize(_value: String) -> Result<Self> {
         todo!()
     }
 }
@@ -105,17 +113,17 @@ impl LoginContext {
         })
     }
 
-    pub fn current(mut env: Env) -> Result<Self> {
+    pub fn current(env: Env) -> Result<Self> {
         let runtime_dir_manager =
             RuntimeDirManager::from_env(&env).context("Failed to create runtime dir manager")?;
 
         // TODO: is this correct?
-        let vt = env.pull::<VtNumber>().context(
+        let vt = env.get::<VtNumber>().context(
             "Cannot take over current login context.
         Most likely you are already running a graphical session.",
         )?;
 
-        let seat = env.pull::<Seat>().unwrap_or_default();
+        let seat = env.get::<Seat>().unwrap_or_default();
 
         Ok(Self {
             vt: Some(vt),
@@ -124,15 +132,5 @@ impl LoginContext {
             user: None,
             runtime_dir_manager,
         })
-    }
-
-    pub fn update_env<E: EnvContainer>(&mut self, variables: E) {
-        self.env = self.env.clone().merge(variables);
-    }
-}
-
-impl EnvContainer for LoginContext {
-    fn apply_as_container(self, env: Env) -> Env {
-        env.merge(self.env)
     }
 }

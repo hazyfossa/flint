@@ -33,7 +33,7 @@ impl SessionType for SessionManager {
         let executable = if executable == PathBuf::from("<shell_env>") {
             &*context
                 .env
-                .peek::<Shell>()
+                .get::<Shell>()
                 .context("Cannot find user shell")?
         } else {
             executable

@@ -5,10 +5,9 @@ use anyhow::Result;
 use facet::Facet;
 use tokio::process::Command;
 
-use crate::{environment::prelude::*, session::define::prelude::*};
+use crate::{environment::define_env, session::define::prelude::*};
 
-define_env!("WAYLAND_DISPLAY", pub Display(String));
-env_parser_auto!(Display);
+define_env!(pub Display(String) = parse "WAYLAND_DISPLAY");
 
 #[derive(Facet, Default)]
 pub struct SessionManager;
@@ -21,7 +20,7 @@ impl SessionType for SessionManager {
     const TAG: &SessionTypeTag<str> = "wayland";
 
     async fn setup_session(&self, context: &mut SessionContext, executable: &Path) -> Result<()> {
-        context.update_env((
+        context.env.set((
             "MOZ_ENABLE_WAYLAND=1",
             "QT_QPA_PLATFORM=wayland",
             "SDL_VIDEODRIVER=wayland",

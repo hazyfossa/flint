@@ -4,7 +4,7 @@ use anyhow::Result;
 use rustix::process::{self, Signal};
 use tokio::{process::Command, sync::mpsc};
 
-use crate::{environment::EnvRecipient, session::manager::ExitReason};
+use crate::session::manager::ExitReason;
 
 async fn handle_session_subprocess(cmd: Command, shutdown_tx: mpsc::Sender<ExitReason>) {
     // TODO: stdio handling

@@ -1,17 +1,11 @@
 use anyhow::Result;
 
-use crate::environment::{Env, EnvContainer};
-
 pub mod env {
+    use crate::environment::define_env;
     use std::path::PathBuf;
 
-    use crate::environment::prelude::*;
-
-    define_env!("HOME", pub Home(PathBuf));
-    env_parser_raw!(Home);
-
-    define_env!("SHELL", pub Shell(PathBuf));
-    env_parser_raw!(Shell);
+    define_env!(pub Home(PathBuf) = parse "HOME");
+    define_env!(pub Shell(PathBuf) = parse "SHELL");
 }
 
 // NOTE: this is a stub
@@ -32,12 +26,6 @@ impl UserInfo {
             uid: self.uid,
             gid: self.gid,
         }
-    }
-}
-
-impl EnvContainer for UserInfo {
-    fn apply_as_container(self, env: Env) -> Env {
-        env.merge(self.env)
     }
 }
 

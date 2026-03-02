@@ -13,7 +13,7 @@ use std::{
 };
 
 use crate::{
-    environment::{EnvContainerPartial, prelude::*},
+    environment::{EnvironmentParse, define_env},
     session::Session,
 };
 
@@ -115,11 +115,10 @@ impl<T: FreedesktopMetadata + Session> SessionMetadataLookup for T {
     }
 }
 
-define_env!("XDG_SESSION_DESKTOP", SessionNameEnv(String));
-env_parser_auto!(SessionNameEnv);
+define_env!(pub SessionNameEnv(String) = parse "XDG_SESSION_DESKTOP");
 
 // TODO: investigate how this can contain more than one name
-define_env!("XDG_CURRENT_DESKTOP", SessionCompositionEnv(Vec<String>));
+define_env!(pub SessionCompositionEnv(Vec<String>) = "XDG_CURRENT_DESKTOP");
 
 impl SessionCompositionEnv {
     fn simple(name: String) -> Self {
@@ -127,29 +126,13 @@ impl SessionCompositionEnv {
     }
 }
 
-impl EnvParser for SessionCompositionEnv {
-    fn serialize(&self) -> std::ffi::OsString {
-        self.0.join(";").into()
+impl EnvironmentParse<String> for SessionCompositionEnv {
+    fn env_serialize(self) -> String {
+        self.0.join(";")
     }
 
-    fn deserialize(value: std::ffi::OsString) -> Result<Self> {
-        Ok(Self(
-            value
-                .try_to_string()?
-                .split(';')
-                .map(String::from)
-                .collect(),
-        ))
-    }
-}
-
-impl<T> EnvContainerPartial for SessionMetadata<T> {
-    fn apply_as_container(&self, env: Env) -> Env {
-        // TODO: is this correct per spec?
-        let name = self.display_name.as_ref().unwrap_or(&self.id);
-
-        env.set(SessionNameEnv(name.to_string()))
-            .set(SessionCompositionEnv::simple(name.to_string()))
+    fn env_deserialize(value: String) -> Result<Self> {
+        Ok(Self(value.split(';').map(String::from).collect()))
     }
 }
 

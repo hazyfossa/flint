@@ -5,7 +5,6 @@ mod file;
 use file::*;
 
 use std::{
-    ffi::OsString,
     io,
     os::unix::fs,
     path::{Path, PathBuf},
@@ -21,11 +20,10 @@ use rustix::{
 use super::Display;
 
 use crate::{
-    environment::prelude::*, session::manager::SessionContext, utils::runtime_dir::RuntimeDir,
+    environment::define_env, session::manager::SessionContext, utils::runtime_dir::RuntimeDir,
 };
 
-define_env!("XAUTHORITY", pub ClientAuthorityEnv(OsString));
-env_parser_raw!(ClientAuthorityEnv);
+define_env!(pub ClientAuthorityEnv(PathBuf) = parse "XAUTHORITY");
 
 fn make_cookie() -> Result<Cookie> {
     let mut cookie_buf = [0u8; Cookie::BYTES_LEN];

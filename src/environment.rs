@@ -1,160 +1,103 @@
-use std::{collections::HashMap, env, ffi::OsString, ops::Deref};
+use std::{
+    collections::{HashMap, hash_map},
+    ffi::OsString,
+    path::PathBuf,
+};
 
-use anyhow::{Context, Result, anyhow};
-use tokio::process::Command;
+use anyhow::{Result, anyhow};
 
-pub mod prelude {
-    pub use super::{Env, EnvParser, EnvVar};
-    pub use crate::{define_env, env_parser_auto, env_parser_raw, utils::misc::OsStringExt};
+pub trait EnvironmentParse<Repr>: Sized {
+    fn env_serialize(self) -> Repr;
+    fn env_deserialize(raw: Repr) -> Result<Self>;
 }
 
-// TODO: environment V2
-// preserve type information as long as possible
-// represent as hashmap entry only on import / export
-// all other times - as a proper type
-// + safe accessors
-pub trait EnvVar: EnvParser {
+impl<T: EnvironmentParse<String>> EnvironmentParse<OsString> for T {
+    fn env_serialize(self) -> OsString {
+        self.env_serialize().into()
+    }
+
+    fn env_deserialize(raw: OsString) -> Result<Self> {
+        let value = raw
+            .into_string()
+            .map_err(|_| anyhow!("Variable contains invalid encoding"))?;
+
+        Self::env_deserialize(value)
+    }
+}
+
+macro_rules! env_parse_raw {
+    ($ty:ty, $t:ident) => {
+        impl EnvironmentParse<$ty> for $t {
+            fn env_serialize(self) -> $ty {
+                self.into()
+            }
+
+            fn env_deserialize(raw: $ty) -> Result<Self> {
+                Ok(Self::from(raw))
+            }
+        }
+    };
+}
+
+env_parse_raw!(OsString, PathBuf);
+env_parse_raw!(OsString, OsString);
+env_parse_raw!(String, String);
+
+pub trait EnvironmentVariable: EnvironmentParse<OsString> {
     const KEY: &str;
 }
 
-pub trait EnvParser: Sized {
-    fn serialize(&self) -> OsString;
-    fn deserialize(value: OsString) -> Result<Self>;
-}
+// NOTE: this is for untyped variables
+// you would usually prefer typed ones instead
 
+pub use crate::_define_env as define_env;
 #[macro_export]
-macro_rules! env_parser_auto {
-    ($target:ident) => {
-        impl EnvParser for $target {
-            #[inline]
-            fn serialize(&self) -> std::ffi::OsString {
-                self.0.to_string().into()
-            }
+macro_rules! _define_env {
+    ($vis:vis $name:ident ($repr:ty) = parse $key:expr) => {
+        impl crate::environment::EnvironmentParse<std::ffi::OsString> for $name {
+            fn env_serialize(self) -> std::ffi::OsString { self.0.env_serialize() }
 
-            #[inline]
-            fn deserialize(value: std::ffi::OsString) -> anyhow::Result<Self> {
-                Ok(Self(value.try_to_string()?.parse()?))
+            fn env_deserialize(raw: std::ffi::OsString) -> anyhow::Result<Self> {
+                Ok(Self(<$repr>::env_deserialize(raw)?))
             }
         }
+
+        crate::_define_env!($vis $name ($repr) = $key);
     };
-}
 
-#[macro_export]
-macro_rules! env_parser_raw {
-    ($target:ident) => {
-        impl EnvParser for $target {
-            #[inline]
-            fn serialize(&self) -> std::ffi::OsString {
-                self.0.clone().into()
-            }
-
-            #[inline]
-            fn deserialize(value: std::ffi::OsString) -> anyhow::Result<Self> {
-                Ok(Self(value.into()))
-            }
-        }
-    };
-}
-
-#[macro_export]
-macro_rules! define_env {
-    ($key:expr, $vis:vis $struct_name:ident($inner:ty)) => {
+    ($vis:vis $name:ident ($repr:ty) = $key:expr) => {
         #[derive(shrinkwraprs::Shrinkwrap)]
-        $vis struct $struct_name($inner);
-        impl EnvVar for $struct_name {
+        $vis struct $name($repr);
+
+        impl crate::environment::EnvironmentVariable for $name {
             const KEY: &str = $key;
         }
     };
 }
 
-#[macro_export]
-macro_rules! impl_env {
-    ($key:expr, $target:ident) => {
-        paste::paste! {
-        impl EnvVar for $target {
-            const KEY: &str = $key;
-        }}
-    };
-}
-
-// This is a purely marker-abstraction
-// as the value pulled from env would always be owned due to deserialization
-//
-// It exists to enforce the common-sense guarantee that for each Env
-// there will only ever be one EnvVar<KEY> per unique KEY
-pub struct PeekEnv<T>(T);
-
-// This allows to look at the inner contents of a variable
-// without allowing to pass it where a unique instance is needed
-//
-// Consider an example of VtNumber(u8)
-//
-impl<Inner, T: Deref<Target = Inner>> Deref for PeekEnv<T> {
-    type Target = Inner;
-
-    fn deref(&self) -> &Self::Target {
-        self.0.deref()
-    }
-}
-
-#[derive(Clone)]
-pub struct Env {
-    state: HashMap<String, OsString>,
-}
-
-pub fn current() -> Env {
-    Env::from_values(
-        env::vars_os()
-            // Note: ignore all variables with non-unicode keys
-            .filter_map(|(k, v)| Some((k.into_string().ok()?, v))),
-    )
-}
+pub struct Env(HashMap<String, OsString>);
 
 impl Env {
+    pub fn get<T: EnvironmentVariable>(&self) -> Result<T> {
+        let raw = self
+            .0
+            .get(T::KEY)
+            .ok_or(anyhow!("Variable {} does not exist", T::KEY))?;
+
+        // TODO: zerocopy
+        T::env_deserialize(raw.clone())
+    }
+
+    pub fn set<T: EnvDiff>(&mut self, e: T) {
+        self.0.extend(e.to_env_diff());
+    }
+
     pub fn from_values(values: impl IntoIterator<Item = (String, OsString)>) -> Self {
-        Self {
-            state: values.into_iter().collect(),
-        }
+        Self(values.into_iter().collect())
     }
 
-    pub fn peek<E: EnvVar>(&self) -> Result<PeekEnv<E>> {
-        self.state
-            .get(E::KEY)
-            .ok_or(anyhow!("Environment variable {} is unset", E::KEY))
-            .and_then(|value| Ok(PeekEnv(E::deserialize(value.clone())?)))
-    }
-
-    pub fn pull<E: EnvVar>(&mut self) -> Result<E> {
-        let value = self
-            .state
-            .get(E::KEY)
-            .ok_or(anyhow!("Variable {} does not exist", E::KEY))?;
-
-        E::deserialize(value.clone()).context(format!(
-            "Variable {} exists, but contents are invalid",
-            E::KEY
-        ))
-    }
-
-    fn update_untyped(&mut self, k: String, v: OsString) {
-        self.state.insert(k, v);
-    }
-
-    pub fn set<E: EnvVar>(mut self, var: E) -> Self {
-        self.state.insert(E::KEY.to_string(), var.serialize());
-        self
-    }
-
-    pub fn merge<E: EnvContainer>(self, container: E) -> Self {
-        container.apply_as_container(self)
-    }
-
-    pub fn merge_from<E: EnvContainerPartial>(self, container: &E) -> Self {
-        container.apply_as_container(self)
-    }
-
-    pub fn to_vec(&self) -> Vec<OsString> {
-        self.state
+    pub fn to_vec(self) -> Vec<OsString> {
+        self.0
             .iter()
             .map(|pair| {
                 let mut merged = OsString::new();
@@ -169,50 +112,35 @@ impl Env {
     }
 }
 
-pub trait EnvRecipient {
-    fn set_env(&mut self, env: Env) -> Result<()>;
-}
+impl IntoIterator for Env {
+    type Item = (String, OsString);
+    type IntoIter = hash_map::IntoIter<String, OsString>;
 
-impl EnvRecipient for Command {
-    fn set_env(&mut self, env: Env) -> Result<()> {
-        self.env_clear().envs(env.state);
-        Ok(())
+    fn into_iter(self) -> Self::IntoIter {
+        self.0.into_iter()
     }
 }
 
-pub trait EnvContainer {
-    fn apply_as_container(self, env: Env) -> Env;
+pub trait EnvDiff {
+    fn to_env_diff(self) -> impl IntoIterator<Item = (String, OsString)>;
 }
 
-pub trait EnvContainerPartial {
-    fn apply_as_container(&self, env: Env) -> Env;
-}
-
-impl<T: EnvVar> EnvContainer for T {
-    fn apply_as_container(self, env: Env) -> Env {
-        env.set(self)
-    }
-}
-
-impl EnvContainer for Env {
-    fn apply_as_container(self, mut env: Env) -> Env {
-        env.state.extend(self.state);
-        Self { state: env.state }
+impl<T: EnvironmentVariable> EnvDiff for T {
+    fn to_env_diff(self) -> impl IntoIterator<Item = (String, OsString)> {
+        [(Self::KEY.to_string(), self.env_serialize())]
     }
 }
 
 // NOTE: this is for untyped variables
 // you would usually prefer typed ones instead
-impl EnvContainer for &'static str {
-    fn apply_as_container(self, mut env: Env) -> Env {
+impl EnvDiff for &'static str {
+    fn to_env_diff(self) -> impl IntoIterator<Item = (String, OsString)> {
         let parts: Vec<&str> = self.split("=").collect();
         if parts.len() != 2 {
             panic!("Invalid environment update: {self}");
         }
 
-        let (key, value) = (parts[0], parts[1]);
-        env.update_untyped(key.to_string(), value.into());
-        env
+        [(parts[0].into(), parts[1].into())]
     }
 }
 
@@ -223,12 +151,13 @@ mod env_container_variadics {
     macro_rules! var_impl {
         ( $( $name:ident )+ ) => {
             #[allow(non_camel_case_types)]
-            impl<$($name: EnvContainer),+> EnvContainer for ($($name,)+)
+            impl<$($name: EnvDiff),+> EnvDiff for ($($name,)+)
             {
-                fn apply_as_container(self, env: Env) -> Env {
+                fn to_env_diff(self) -> impl IntoIterator<Item = (String, OsString)> {
+                    let iter = std::iter::empty();
                     let ($($name,)+) = self;
-                    $(let env = env.merge($name);)+
-                    env
+                    $(let iter = iter.chain($name.to_env_diff());)+
+                    iter
                 }
             }
         };

@@ -1,22 +1,3 @@
-pub mod misc {
-    use std::{ffi::OsString, io};
-
-    pub trait OsStringExt {
-        fn try_to_string(self) -> io::Result<String>;
-    }
-
-    impl OsStringExt for OsString {
-        fn try_to_string(self) -> io::Result<String> {
-            self.into_string().map_err(|_| {
-                io::Error::new(
-                    io::ErrorKind::InvalidData,
-                    "String is not valid unicode (UTF-8)",
-                )
-            })
-        }
-    }
-}
-
 pub mod fd {
     use std::{ops::Range, os::fd::OwnedFd};
 
@@ -87,7 +68,10 @@ pub mod runtime_dir {
     use anyhow::{Context, Result, anyhow};
     use shrinkwraprs::Shrinkwrap;
 
-    use crate::{APP_NAME, environment::prelude::*};
+    use crate::{
+        APP_NAME,
+        environment::{Env, define_env},
+    };
 
     #[derive(Shrinkwrap)]
     pub struct RuntimeDir {
@@ -106,13 +90,12 @@ pub mod runtime_dir {
         path: PathBuf,
     }
 
-    define_env!("XDG_RUNTIME_DIR", RuntimeDirEnv(PathBuf));
-    env_parser_raw!(RuntimeDirEnv);
+    define_env!(pub RuntimeDirEnv(PathBuf) = parse "XDG_RUNTIME_DIR");
 
     impl RuntimeDirManager {
         pub fn from_env(env: &Env) -> Result<Self> {
             let path = &*env
-                .peek::<RuntimeDirEnv>()
+                .get::<RuntimeDirEnv>()
                 .context("Environment does not provide a runtime directory")?;
 
             let permissions = fs_err::metadata(&path)?.permissions().mode();

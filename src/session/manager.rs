@@ -5,7 +5,7 @@ use tokio::{process::Command, sync::mpsc};
 use std::any::Any;
 
 use crate::{
-    environment::{EnvContainerPartial, prelude::*},
+    environment::define_env,
     login::context::LoginContext,
     session::{Session, define::SessionTypeTag, metadata::SessionMetadata},
 };
@@ -80,11 +80,4 @@ impl<T: Session> SessionManager<T> {
 
 // TODO: unified env
 
-define_env!("XDG_SESSION_TYPE", pub SessionTypeEnv(SessionTypeTag<String>));
-env_parser_auto!(SessionTypeEnv);
-
-impl<T: Session> EnvContainerPartial for SessionManager<T> {
-    fn apply_as_container(&self, env: Env) -> Env {
-        env.set(SessionTypeEnv(T::TAG.to_string()))
-    }
-}
+define_env!(pub SessionTypeEnv(SessionTypeTag) = parse "XDG_SESSION_TYPE");

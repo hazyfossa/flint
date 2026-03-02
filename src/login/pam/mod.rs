@@ -14,7 +14,7 @@ use std::{
     ptr,
 };
 
-use crate::environment::{Env, EnvRecipient};
+use crate::environment::Env;
 
 // TODO: RAII
 
@@ -144,6 +144,15 @@ impl PAM<'_> {
         todo!()
     }
 
+    pub fn set_env(&mut self, env: Env) -> Result<()> {
+        // NOTE: misc_paste_env in pam_sys::wrappped is constrained to unicode (UTF-8)
+        // while our Env (and this impl) is not
+
+        let env = env_to_c_pointers(env);
+        pam_call!(let ret = self.pam_misc_paste_env(env.as_ptr()));
+        ret
+    }
+
     pub fn end(mut self) -> Result<()> {
         pam_call!(let ret = self.pam_end(self.last_code as i32));
         ret
@@ -162,15 +171,4 @@ fn env_to_c_pointers(env: Env) -> Vec<*const i8> {
         .map(|env| env.as_ptr())
         .chain(Some(ptr::null()))
         .collect()
-}
-
-impl EnvRecipient for PAM<'_> {
-    fn set_env(&mut self, env: Env) -> Result<()> {
-        // NOTE: misc_paste_env in pam_sys::wrappped is constrained to unicode (UTF-8)
-        // while our Env (and this impl) is not
-
-        let env = env_to_c_pointers(env);
-        pam_call!(let ret = self.pam_misc_paste_env(env.as_ptr()));
-        ret
-    }
 }

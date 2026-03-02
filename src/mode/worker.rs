@@ -4,7 +4,7 @@ use rustix::process;
 
 use crate::{
     APP_NAME,
-    environment::{Env, EnvRecipient},
+    environment::Env,
     login::{
         context::{LoginContext, Seat, SessionClass},
         pam::{CredentialsOP, PAM, PamDisplay, PamItemType},
@@ -49,10 +49,8 @@ async fn login<T: Session>(
 
     process::setsid().context("Failed to become a session leader process")?;
 
-    let env = inherit_env
-        .set(session_class)
-        .merge(user_info)
-        .merge_from(&session_manager);
+    let mut env = inherit_env;
+    env.set((session_class, user_info.env)); // TODO: merge from session manager
 
     let terminal = Terminal::new(vt_number).context("Failed to provision an active VT")?;
     terminal
@@ -60,7 +58,7 @@ async fn login<T: Session>(
         .context("failed to set terminal as current")?;
 
     pam.set_item(PamItemType::TTY, &vt_number.to_tty_string())?;
-    let env = env.set(vt_number);
+    env.set(vt_number);
 
     pam.set_env(env)?;
     pam.open_session()?;

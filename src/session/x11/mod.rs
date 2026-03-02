@@ -8,25 +8,19 @@ use tokio::{
     process::Command,
 };
 
-use std::{
-    ffi::OsString,
-    path::{Path, PathBuf},
-};
+use std::path::{Path, PathBuf};
 
 use auth::XAuthorityManager;
 
 use crate::{
-    environment::prelude::*,
+    environment::{EnvironmentParse, EnvironmentVariable},
     session::define::prelude::*,
-    utils::{
-        fd::{CommandFdCtxExt, FdContext},
-        misc::OsStringExt,
-    },
+    utils::fd::{CommandFdCtxExt, FdContext},
 };
 
 static DEFAULT_XORG_PATH: &str = "/usr/lib/Xorg";
 
-define_env!("DISPLAY", pub Display(u8));
+pub struct Display(u8);
 
 impl Display {
     pub fn new(number: u8) -> Self {
@@ -38,15 +32,18 @@ impl Display {
     }
 }
 
-impl EnvParser for Display {
-    fn serialize(&self) -> OsString {
+impl EnvironmentVariable for Display {
+    const KEY: &str = "DISPLAY";
+}
+
+impl EnvironmentParse<String> for Display {
+    fn env_serialize(self) -> String {
         format!(":{}", self.0).into()
     }
 
-    fn deserialize(value: OsString) -> Result<Self> {
+    fn env_deserialize(value: String) -> Result<Self> {
         Ok(Self(
             value
-                .try_to_string()?
                 .strip_prefix(":")
                 .ok_or(anyhow!("display should start with :"))?
                 .parse()?,
@@ -139,8 +136,8 @@ fn spawn_server(
     }
 
     command
-        .args(["-seat".into(), context.seat.serialize()])
-        .args(["-auth".into(), authority.into_os_string()])
+        .args(["-seat".into(), context.seat.clone()])
+        .args(["-auth".into(), authority])
         .args(["-nolisten", "tcp"])
         .args(["-background", "none", "-noreset", "-keeptty", "-novtswitch"])
         .args(["-verbose", "3", "-logfile", "/dev/null"])
@@ -178,7 +175,8 @@ impl SessionType for SessionManager {
 
         authority_manager.finish(context)?;
 
-        context.update_env((display, client_authority));
+        context.env.set((display, client_authority));
+
         context.spawn(Command::new(executable))
     }
 }
