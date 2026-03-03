@@ -5,6 +5,7 @@ use std::{
 };
 
 use anyhow::{Result, anyhow};
+use serde::Deserialize;
 
 pub trait EnvironmentParse<Repr>: Sized {
     fn env_serialize(self) -> Repr;
@@ -54,7 +55,7 @@ pub use crate::_define_env as define_env;
 #[macro_export]
 macro_rules! _define_env {
     ($vis:vis $name:ident ($repr:ty) = parse $key:expr) => {
-        impl crate::environment::EnvironmentParse<std::ffi::OsString> for $name {
+        impl crate::frame::environment::EnvironmentParse<std::ffi::OsString> for $name {
             fn env_serialize(self) -> std::ffi::OsString { self.0.env_serialize() }
 
             fn env_deserialize(raw: std::ffi::OsString) -> anyhow::Result<Self> {
@@ -69,12 +70,13 @@ macro_rules! _define_env {
         #[derive(shrinkwraprs::Shrinkwrap)]
         $vis struct $name($repr);
 
-        impl crate::environment::EnvironmentVariable for $name {
+        impl crate::frame::environment::EnvironmentVariable for $name {
             const KEY: &str = $key;
         }
     };
 }
 
+#[derive(Deserialize)]
 pub struct Env(HashMap<String, OsString>);
 
 impl Env {
@@ -141,6 +143,12 @@ impl EnvDiff for &'static str {
         }
 
         [(parts[0].into(), parts[1].into())]
+    }
+}
+
+impl EnvDiff for Env {
+    fn to_env_diff(self) -> impl IntoIterator<Item = (String, OsString)> {
+        self
     }
 }
 

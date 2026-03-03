@@ -19,9 +19,7 @@ use rustix::{
 
 use super::Display;
 
-use crate::{
-    environment::define_env, session::manager::SessionContext, utils::runtime_dir::RuntimeDir,
-};
+use crate::{core::SessionContext, frame::environment::define_env, utils::runtime_dir::RuntimeDir};
 
 define_env!(pub ClientAuthorityEnv(PathBuf) = parse "XAUTHORITY");
 

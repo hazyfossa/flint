@@ -1,8 +1,7 @@
 mod bind;
 mod core;
-mod environment;
+mod frame;
 mod greet;
-mod plug;
 mod session;
 mod utils;
 

@@ -1,4 +1,13 @@
-// pub mod cli;
 pub mod daemon;
-pub mod login;
-pub mod worker;
+mod environment;
+mod worker;
+
+use crate::bind::tty::VtNumber;
+pub use worker::SessionContext;
+
+use environment::Seat;
+
+pub struct View {
+    pub seat: Seat,
+    pub vt: VtNumber,
+}

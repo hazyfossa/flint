@@ -14,7 +14,7 @@ use std::{
     ptr,
 };
 
-use crate::environment::Env;
+use crate::frame::environment::Env;
 
 // TODO: RAII
 

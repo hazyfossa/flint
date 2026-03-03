@@ -1,26 +1,17 @@
-pub mod manager;
 pub mod metadata;
-
-use std::path::Path;
 
 use anyhow::Result;
 use facet::Facet;
 
-use crate::{bind::tty::VtRenderMode, session::metadata::SessionMetadataMap};
+use crate::{core::SessionContext, session::metadata::SessionMetadataMap};
 
 pub mod prelude {
-    pub use super::SessionType;
-    pub use crate::session::{manager::SessionContext, metadata::FreedesktopMetadata};
+    pub use super::{SessionType, metadata::FreedesktopMetadata};
+    pub use crate::core::SessionContext;
 }
 
 pub trait SessionType: metadata::SessionMetadataLookup {
-    const VT_RENDER_MODE: VtRenderMode = VtRenderMode::Graphics;
-
-    async fn setup_session(
-        &self,
-        context: &mut manager::SessionContext,
-        executable: &Path,
-    ) -> Result<()>;
+    async fn setup_session(&self, context: &mut SessionContext) -> Result<()>;
 }
 
 #[derive(Facet)]
@@ -36,6 +27,6 @@ crate::plug_mod!(
     {
         pub x11 = "X11",
         pub wayland = "wayland",
-        pub tty = "tty",
+        // pub tty = "tty",
     }
 );

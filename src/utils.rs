@@ -70,7 +70,7 @@ pub mod runtime_dir {
 
     use crate::{
         APP_NAME,
-        environment::{Env, define_env},
+        frame::environment::{Env, define_env},
     };
 
     #[derive(Shrinkwrap)]

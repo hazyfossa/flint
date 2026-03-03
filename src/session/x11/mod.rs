@@ -13,7 +13,7 @@ use std::path::{Path, PathBuf};
 use auth::XAuthorityManager;
 
 use crate::{
-    environment::{EnvironmentParse, EnvironmentVariable},
+    frame::environment::{EnvironmentParse, EnvironmentVariable},
     session::prelude::*,
     utils::fd::{CommandFdCtxExt, FdContext},
 };
@@ -131,12 +131,9 @@ fn spawn_server(
 
     let mut command = Command::new(path);
 
-    if let Some(vt) = &context.vt {
-        command.arg(format!("vt{}", vt.to_string()));
-    }
-
     command
-        .args(["-seat".into(), context.seat.clone()])
+        .arg(format!("vt{}", &context.view.vt.to_string()))
+        .args(["-seat".into(), context.view.seat.clone()])
         .args(["-auth".into(), authority])
         .args(["-nolisten", "tcp"])
         .args(["-background", "none", "-noreset", "-keeptty", "-novtswitch"])
@@ -152,7 +149,7 @@ fn spawn_server(
 }
 
 impl SessionType for SessionManager {
-    async fn setup_session(&self, context: &mut SessionContext, executable: &Path) -> Result<()> {
+    async fn setup_session(&self, context: &mut SessionContext) -> Result<()> {
         // let window_path = WindowPath::previous_plus_vt(&context.env, &context.terminal.number)?;
 
         let authority_manager = XAuthorityManager::new(context, self.lock_authority)
@@ -175,6 +172,6 @@ impl SessionType for SessionManager {
 
         context.env.set((display, client_authority));
 
-        context.spawn(Command::new(executable))
+        context.spawn(Command::new(context.executable))
     }
 }

@@ -1,7 +1,3 @@
-use facet::Facet;
-
-// trait_alias!(pub trait ConfigContainer = for<'f> Facet<'f> + Default);
-
 pub trait Tagged {
     const TAG: &'static str;
 }
@@ -27,7 +23,7 @@ macro_rules! plug {(
     ),*}
 ) => { paste::paste! {
 
-        use $crate::plug::*;
+        use $crate::frame::plug::*;
 
         $crate::trait_alias!(pub trait [<$trait Plug>] = $trait + Tagged + FromConfig);
 

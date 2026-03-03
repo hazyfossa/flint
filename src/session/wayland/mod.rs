@@ -5,7 +5,7 @@ use anyhow::Result;
 use facet::Facet;
 use tokio::process::Command;
 
-use crate::{environment::define_env, session::prelude::*};
+use crate::{frame::environment::define_env, session::prelude::*};
 
 define_env!(pub Display(String) = parse "WAYLAND_DISPLAY");
 
@@ -17,7 +17,7 @@ impl FreedesktopMetadata for SessionManager {
 }
 
 impl SessionType for SessionManager {
-    async fn setup_session(&self, context: &mut SessionContext, executable: &Path) -> Result<()> {
+    async fn setup_session(&self, context: &mut SessionContext) -> Result<()> {
         context.env.set((
             "MOZ_ENABLE_WAYLAND=1",
             "QT_QPA_PLATFORM=wayland",

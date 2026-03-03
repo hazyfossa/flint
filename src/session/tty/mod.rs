@@ -18,24 +18,17 @@ use crate::{
 pub struct SessionManager;
 
 impl SessionType for SessionManager {
-    const VT_RENDER_MODE: VtRenderMode = VtRenderMode::Text;
-
-    async fn setup_session(&self, context: &mut SessionContext, executable: &Path) -> Result<()> {
+    async fn setup_session(&self, context: &mut SessionContext) -> Result<()> {
         // TODO: does it make sense to try and allocate one here?
-        let vt = context
-            .vt
-            .take()
-            .ok_or(anyhow!("Cannot start a TTY session without a VT"))?;
+        let terminal = context.defer_terminal()?;
 
-        let terminal = Terminal::new(vt).context("Cannot open VT by number")?;
+        let executable = &context.executable;
 
-        let executable = if executable == PathBuf::from("<shell_env>") {
-            &*context
+        if *executable == PathBuf::from("<shell_env>") {
+            executable = &*context
                 .env
                 .get::<Shell>()
                 .context("Cannot find user shell")?
-        } else {
-            executable
         };
 
         let mut cmd = Command::new(executable);

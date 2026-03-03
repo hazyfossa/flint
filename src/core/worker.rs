@@ -1,44 +1,46 @@
-use anyhow::{Context, Result};
-use pico_args::Arguments;
-use rustix::process;
+use std::path::PathBuf;
 
-use super::login::{
-    context::{LoginContext, Seat, SessionClass},
-    users::UserInfoProvider,
-};
+use anyhow::{Context, Result};
+use rustix::process;
 
 use crate::{
     APP_NAME,
     bind::{
         pam::{CredentialsOP, PAM, PamDisplay, PamItemType},
-        tty::{Terminal, VtNumber},
+        tty::{Terminal, VtNumber, VtRenderMode},
     },
-    environment::Env,
-    session::{SessionTypePlug, manager::SessionManager},
+    core::{View, environment::Seat},
+    frame::environment::Env,
+    session::SessionTypePlug,
 };
 
-// TODO: rewrite using the context infrastructure instead
+pub struct SessionContext {
+    pub view: View,
+    pub env: Env,
+    pub executable: PathBuf,
 
-#[allow(dead_code)]
-// NOTE: while technically PAM can query for a username
-// for now we work around that
-async fn login<T: SessionTypePlug>(
+    uid: u32,
+    gid: u32,
+
+    systemd_user: u128, // TODO
+}
+
+async fn start_session<T: SessionTypePlug>(
     display: impl PamDisplay,
 
-    user_info_provider: impl UserInfoProvider,
     // If unset, it will be queried via PAM
     username: Option<&str>,
 
-    inherit_env: Env,
-    seat: Seat,
-    vt_number: VtNumber,
+    session_manager: T,
+    executable: PathBuf,
 
-    session_manager: SessionManager<T>,
-    session_class: SessionClass,
+    seat: Seat,
+    // If unset, next available one will be allocated
+    vt_number: Option<VtNumber>,
 
     require_auth: bool,
     silent: bool,
-) -> Result<String> {
+) -> Result<()> {
     let mut pam = PAM::new(APP_NAME, display, username, silent)?;
 
     if require_auth {
@@ -47,44 +49,38 @@ async fn login<T: SessionTypePlug>(
     pam.assert_account_is_valid(false)?;
     pam.credentials(CredentialsOP::Establish)?;
 
-    let user_info = user_info_provider.query(&pam.get_username()?)?;
-    let user_id = user_info.as_user_id();
+    process::setsid().context("failed to become a session leader process")?;
 
-    process::setsid().context("Failed to become a session leader process")?;
+    let vt_number = match vt_number {
+        Some(value) => value,
+        None => todo!(), // TODO: vt alloc
+    };
 
-    let mut env = inherit_env;
-    env.set((session_class, user_info.env)); // TODO: merge from session manager
-
-    let terminal = Terminal::new(vt_number).context("Failed to provision an active VT")?;
+    let terminal = Terminal::new(vt_number).context("failed to provision an active VT")?;
     terminal
         .set_as_current()
         .context("failed to set terminal as current")?;
 
     pam.set_item(PamItemType::TTY, &vt_number.to_tty_string())?;
-    env.set(vt_number);
 
-    pam.set_env(env)?;
     pam.open_session()?;
-    let env = pam.get_env()?;
 
-    let context = LoginContext::new(env, seat, Some(vt_number), user_id)
-        .context("Cannot establish a login context")?;
+    let pam_env = pam.get_env()?;
+    let mut context = SessionContext::from_trusted_env(executable, pam_env)
+        .context("failed to provision session context from env that PAM passed us")?;
 
-    let session = session_manager.run(context).await?;
+    let session_resources = session_manager.setup_session(&mut context).await?;
 
     terminal
-        .activate(T::VT_RENDER_MODE)
+        .activate(VtRenderMode::Graphics)
         .context("failed to activate VT")?;
 
-    let exit_reason = session.join().await?;
+    // TODO: wait on end of graphical-session target in systemd.
 
     pam.close_session()?;
+    drop(session_resources);
     pam.credentials(CredentialsOP::Delete)?;
     pam.end()?;
 
-    Ok(exit_reason)
-}
-
-async fn run(args: &Arguments) -> Result<()> {
-    todo!()
+    Ok(())
 }

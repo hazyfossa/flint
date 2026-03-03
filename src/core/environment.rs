@@ -1,12 +1,8 @@
-use anyhow::{Context, Result};
-use shrinkwraprs::Shrinkwrap;
-
-use super::users::UserID;
+use anyhow::Result;
 
 use crate::{
-    bind::tty::{VtNumber, VtRenderMode},
-    environment::{Env, EnvironmentParse, EnvironmentVariable, define_env},
-    utils::runtime_dir::RuntimeDirManager,
+    bind::tty::VtNumber,
+    frame::environment::{EnvironmentParse, EnvironmentVariable, define_env},
 };
 
 impl EnvironmentVariable for VtNumber {
@@ -70,51 +66,5 @@ impl EnvironmentParse<String> for SessionClass {
 
     fn env_deserialize(_value: String) -> Result<Self> {
         todo!()
-    }
-}
-
-pub struct LoginContext {
-    pub vt: Option<VtNumber>,
-    pub seat: Seat,
-
-    pub env: Env,
-
-    pub user: Option<UserID>,
-    pub runtime_dir_manager: RuntimeDirManager,
-}
-
-impl LoginContext {
-    pub fn new(env: Env, seat: Seat, vt: Option<VtNumber>, switch_user: UserID) -> Result<Self> {
-        let runtime_dir_manager =
-            RuntimeDirManager::from_env(&env).context("Failed to create runtime dir manager")?;
-
-        Ok(Self {
-            vt,
-            seat,
-            env,
-            user: Some(switch_user),
-            runtime_dir_manager,
-        })
-    }
-
-    pub fn current(env: Env) -> Result<Self> {
-        let runtime_dir_manager =
-            RuntimeDirManager::from_env(&env).context("Failed to create runtime dir manager")?;
-
-        // TODO: is this correct?
-        let vt = env.get::<VtNumber>().context(
-            "Cannot take over current login context.
-        Most likely you are already running a graphical session.",
-        )?;
-
-        let seat = env.get::<Seat>().unwrap_or_default();
-
-        Ok(Self {
-            vt: Some(vt),
-            seat,
-            env,
-            user: None,
-            runtime_dir_manager,
-        })
     }
 }
