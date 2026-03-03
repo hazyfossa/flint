@@ -6,7 +6,7 @@ use std::path::Path;
 use anyhow::Result;
 use facet::Facet;
 
-use crate::{login::VtRenderMode, session::metadata::SessionMetadataMap};
+use crate::{bind::tty::VtRenderMode, session::metadata::SessionMetadataMap};
 
 pub mod prelude {
     pub use super::SessionType;

@@ -2,15 +2,18 @@ use anyhow::{Context, Result};
 use pico_args::Arguments;
 use rustix::process;
 
+use super::login::{
+    context::{LoginContext, Seat, SessionClass},
+    users::UserInfoProvider,
+};
+
 use crate::{
     APP_NAME,
-    environment::Env,
-    login::{
-        context::{LoginContext, Seat, SessionClass},
+    bind::{
         pam::{CredentialsOP, PAM, PamDisplay, PamItemType},
         tty::{Terminal, VtNumber},
-        users::UserInfoProvider,
     },
+    environment::Env,
     session::{SessionTypePlug, manager::SessionManager},
 };
 

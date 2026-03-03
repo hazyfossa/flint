@@ -1,29 +1,13 @@
 use anyhow::{Context, Result};
 use shrinkwraprs::Shrinkwrap;
 
+use super::users::UserID;
+
 use crate::{
+    bind::tty::{VtNumber, VtRenderMode},
     environment::{Env, EnvironmentParse, EnvironmentVariable, define_env},
-    login::users::UserID,
     utils::runtime_dir::RuntimeDirManager,
 };
-
-#[derive(Shrinkwrap, Clone, Copy, PartialEq)]
-pub struct VtNumber(u16);
-
-impl VtNumber {
-    // This function is soft-unsafe, as it is the caller responsibility
-    // to ensure "number" indicates a valid VT to handle
-    //
-    // For example, it is a really bad idea to assign this to an arbitrary value
-    // as that will allow (among other things) switching to this VT while another program is running in it
-    // While not undefined behaviour, this is undesirable.
-    //
-    // General rule of thumb: either the user or the kernel should tell you this VT number is free
-    // before you call this
-    pub fn manually_checked_from(number: u16) -> Self {
-        Self(number)
-    }
-}
 
 impl EnvironmentVariable for VtNumber {
     const KEY: &str = "XDG_VTNR";

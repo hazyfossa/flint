@@ -4,5 +4,6 @@ pub mod dbus {
 }
 
 pub mod varlink {
+    #![allow(dead_code)]
     pub mod userdb;
 }

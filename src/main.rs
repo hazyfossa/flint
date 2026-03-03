@@ -1,11 +1,9 @@
+mod bind;
+mod core;
 mod environment;
 mod greet;
-mod login;
-mod mode;
 mod plug;
-mod plymouth;
 mod session;
-mod systemd;
 mod utils;
 
 use anyhow::{Result, bail};
@@ -27,6 +25,6 @@ async fn main() -> Result<()> {
     match args.subcommand()? {
         // Some(ref subcommand) => mode::cli::run(subcommand, args, config).await,
         Some(_) => bail!("cli mode is not supported for now"),
-        None => mode::daemon::run(config).await,
+        None => core::daemon::run(config).await,
     }
 }

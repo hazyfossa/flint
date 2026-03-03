@@ -1,7 +1,7 @@
 use anyhow::{Context, Result, anyhow};
 use facet::Facet;
 
-use crate::{systemd, utils::config::Config};
+use crate::{bind::systemd, utils::config::Config};
 
 #[derive(Facet)]
 pub struct DaemonConfig {

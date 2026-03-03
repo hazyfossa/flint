@@ -5,7 +5,8 @@ use facet::Facet;
 use tokio::process::Command;
 
 use crate::{
-    login::{VtRenderMode, tty::Terminal, users::env::Shell},
+    bind::tty::{Terminal, VtRenderMode},
+    core::login::users::env::Shell,
     session::{
         metadata::{SessionMetadata, SessionMetadataLookup, SessionMetadataMap},
         prelude::*,

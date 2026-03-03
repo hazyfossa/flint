@@ -195,7 +195,7 @@ pub mod config {
     use fs_err::File;
     use pico_args::Arguments;
 
-    use crate::{greet::GreeterConfig, mode::daemon::DaemonConfig};
+    use crate::{core::daemon::DaemonConfig, greet::GreeterConfig};
 
     #[derive(Facet, Default)]
     pub struct Config {
