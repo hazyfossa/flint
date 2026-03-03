@@ -6,7 +6,7 @@ use std::path::Path;
 use anyhow::Result;
 use facet::Facet;
 
-use crate::login::VtRenderMode;
+use crate::{login::VtRenderMode, session::metadata::SessionMetadataMap};
 
 pub mod prelude {
     pub use super::SessionType;
@@ -24,10 +24,18 @@ pub trait SessionType: metadata::SessionMetadataLookup {
 }
 
 #[derive(Facet)]
-struct CommonConfig {}
+pub struct ConfigCell<T> {
+    #[facet(flatten)]
+    manager_config: T,
+    #[facet(rename = "entry")]
+    entries: SessionMetadataMap<T>,
+}
 
-crate::plug_mod!((trait: SessionType, common: CommonConfig, name: SessionManager) {
-    pub x11 = "X11",
-    pub wayland = "wayland",
-    pub tty = "tty",
-});
+crate::plug_mod!(
+    (trait: SessionType, config_cell: ConfigCell, name: SessionManager)
+    {
+        pub x11 = "X11",
+        pub wayland = "wayland",
+        pub tty = "tty",
+    }
+);

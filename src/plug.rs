@@ -6,18 +6,14 @@ pub trait Tagged {
     const TAG: &'static str;
 }
 
-pub trait FromConfig<T, Common>: Sized {
+pub trait FromConfig: Sized {
     type Config;
     type ConfigCell;
     fn from_config(config: &Self::Config) -> Option<&Self::ConfigCell>;
 }
 
-#[derive(Facet, Default)]
-pub struct ConfigCell<Common, Specific> {
-    #[facet(flatten)]
-    common: Common,
-    #[facet(flatten)]
-    specific: Specific,
+pub struct SimpleConfigCell<T> {
+    config: T,
 }
 
 // TODO: $trait:path (traits not alongside plug!)
@@ -25,7 +21,7 @@ pub struct ConfigCell<Common, Specific> {
 
 #[macro_export]
 macro_rules! plug {(
-    (trait: $trait:ident, common: $common:ident)
+    (trait: $trait:ident, config_cell: $config_cell:path)
     {$(
         $impl:path = $tag:expr
     ),*}
@@ -33,16 +29,16 @@ macro_rules! plug {(
 
         use $crate::plug::*;
 
-        $crate::trait_alias!(pub trait [<$trait Plug>] = $trait + Tagged + FromConfig<Config, $common>);
+        $crate::trait_alias!(pub trait [<$trait Plug>] = $trait + Tagged + FromConfig);
 
         $(
             impl Tagged for $impl {
                 const TAG: &'static str = $tag;
             }
 
-            impl FromConfig<Config, $common> for $impl {
+            impl FromConfig for $impl {
                 type Config = Config;
-                type ConfigCell = ConfigCell<$common, $impl>;
+                type ConfigCell = $config_cell<$impl>;
 
                 fn from_config(config: &Self::Config) -> Option<&Self::ConfigCell> {
                     config.[<$tag>].as_ref()
@@ -55,7 +51,7 @@ macro_rules! plug {(
         pub struct Config {
             $(
                 #[facet(rename = $tag)]
-                [<$tag>]: Option<ConfigCell<$common, $impl>>,
+                [<$tag>]: Option<$config_cell<$impl>>,
             )+
         }
 
@@ -66,7 +62,7 @@ macro_rules! plug {(
                 ($provided_tag:expr => $function:ident($all($args:tt)*) $all($post:tt)?) => {
                     match $provided_tag {
                         // T::TAG => function::<T>(*arguments)
-                        $( <$impl>::TAG =>
+                        $( <$impl>::TAG => // TODO: replace with $tag
                         $function::<$impl>($all($args)*) $all($post)?, )+
                         //
                         other => anyhow::bail!("{other} is not a valid session type."),
@@ -80,42 +76,17 @@ macro_rules! plug {(
 #[macro_export]
 macro_rules! plug_mod {
     (
-        (trait: $trait:path, common: $common:ident, name: $name:ident)
+        (trait: $trait:ident, config_cell: $config_cell:path, name: $name:ident)
         {$(
             $vis:vis $mod:ident = $tag:expr,
         )*}
     ) => { paste::paste! {
-        $(
-            $vis mod $mod;
-        )+
+        $( $vis mod $mod; )+
 
         $crate::plug! {
-            (trait: $trait, common: $common) {
+            (trait: $trait, config_cell: $config_cell) {
                 $($mod::$name = $tag),*
             }
         }
     }};
-}
-
-mod test {
-    #[derive(Facet, Default)]
-    struct TestCommon {
-        a: u16,
-    }
-
-    pub trait TestType {
-        const TEST: u32 = 0;
-
-        async fn test(&self) -> u16;
-    }
-
-    mod b {
-        use super::*;
-        #[derive(Facet, Default)]
-        pub struct TestImpl;
-    }
-
-    plug!((trait: TestType, common: TestCommon) {
-        b::TestImpl = "TAG_1"
-    });
 }
