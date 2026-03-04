@@ -1,11 +1,11 @@
-use std::{
-    collections::{HashMap, hash_map},
-    ffi::OsString,
-    path::PathBuf,
-};
+use std::{collections::HashMap, env as sys, ffi::OsString, path::PathBuf};
 
 use anyhow::{Result, anyhow};
 use serde::Deserialize;
+
+// TODO: zerocopy views
+
+// Parse
 
 pub trait EnvironmentParse<Repr>: Sized {
     fn env_serialize(self) -> Repr;
@@ -44,12 +44,11 @@ env_parse_raw!(OsString, PathBuf);
 env_parse_raw!(OsString, OsString);
 env_parse_raw!(String, String);
 
+// Define
+
 pub trait EnvironmentVariable: EnvironmentParse<OsString> {
     const KEY: &str;
 }
-
-// NOTE: this is for untyped variables
-// you would usually prefer typed ones instead
 
 pub use crate::_define_env as define_env;
 #[macro_export]
@@ -76,52 +75,93 @@ macro_rules! _define_env {
     };
 }
 
-#[derive(Deserialize)]
-pub struct Env(HashMap<String, OsString>);
+// Env containers
 
-impl Env {
-    pub fn get<T: EnvironmentVariable>(&self) -> Result<T> {
+// Raw interface
+
+type EnvEntry = (String, OsString);
+
+trait EnvRaw {
+    fn raw_get(&self, key: &str) -> Option<OsString>;
+    fn raw_merge(&mut self, diff: impl EnvDiff);
+}
+
+// Typed
+
+pub trait Env: EnvRaw + IntoIterator<Item = EnvEntry> {
+    fn get<T: EnvironmentVariable>(&self) -> Result<T> {
         let raw = self
-            .0
-            .get(T::KEY)
+            .raw_get(T::KEY)
             .ok_or(anyhow!("Variable {} does not exist", T::KEY))?;
 
         // TODO: zerocopy
         T::env_deserialize(raw.clone())
     }
 
-    pub fn set<T: EnvDiff>(&mut self, e: T) {
-        self.0.extend(e.to_env_diff());
+    fn set<T: EnvDiff>(&mut self, e: T) {
+        self.raw_merge(e);
+    }
+}
+
+// Buf
+
+#[derive(Deserialize)]
+pub struct EnvBuf(HashMap<String, OsString>);
+
+impl EnvRaw for EnvBuf {
+    fn raw_get(&self, key: &str) -> Option<OsString> {
+        // TODO-ref: zerocopy
+        self.0.get(key).cloned()
     }
 
-    pub fn from_values(values: impl IntoIterator<Item = (String, OsString)>) -> Self {
+    fn raw_merge(&mut self, diff: impl EnvDiff) {
+        self.0.extend(diff.to_env_diff());
+    }
+}
+
+impl EnvBuf {
+    pub fn from_values(values: impl IntoIterator<Item = EnvEntry>) -> Self {
         Self(values.into_iter().collect())
     }
+}
 
-    pub fn to_vec(self) -> Vec<OsString> {
+impl EnvDiff for EnvBuf {
+    fn to_env_diff(self) -> impl IntoIterator<Item = (String, OsString)> {
         self.0
-            .iter()
-            .map(|pair| {
-                let mut merged = OsString::new();
-
-                merged.push(pair.0);
-                merged.push("=");
-                merged.push(pair.1);
-
-                merged
-            })
-            .collect()
     }
 }
 
-impl IntoIterator for Env {
-    type Item = (String, OsString);
-    type IntoIter = hash_map::IntoIter<String, OsString>;
+// System
 
-    fn into_iter(self) -> Self::IntoIter {
-        self.0.into_iter()
+pub struct EnvOs {
+    new: EnvBuf,
+}
+
+impl EnvRaw for EnvOs {
+    fn raw_get(&self, key: &str) -> Option<OsString> {
+        match self.new.raw_get(key) {
+            Some(set) => return Some(set),
+            None => sys::var_os(key),
+        }
+    }
+
+    fn raw_merge(&mut self, diff: impl EnvDiff) {
+        self.new.raw_merge(diff);
     }
 }
+
+impl EnvDiff for EnvOs {
+    fn to_env_diff(self) -> impl IntoIterator<Item = (String, OsString)> {
+        // TODO: verify that new overrides correctly
+        // TODO: consider optimizing this for spawn (do not copy what kernel passes anyway)
+        // NOTE: this ignores variables with non-utf8 keys
+        sys::vars_os()
+            .filter_map(|(key, value)| Some((key.into_string().ok()?, value)))
+            .chain(self.new.to_env_diff())
+    }
+}
+
+// Diff
 
 pub trait EnvDiff {
     fn to_env_diff(self) -> impl IntoIterator<Item = (String, OsString)>;
@@ -143,12 +183,6 @@ impl EnvDiff for &'static str {
         }
 
         [(parts[0].into(), parts[1].into())]
-    }
-}
-
-impl EnvDiff for Env {
-    fn to_env_diff(self) -> impl IntoIterator<Item = (String, OsString)> {
-        self
     }
 }
 
@@ -183,3 +217,23 @@ mod env_container_variadics {
     var_impl!  { a b c d e f g h i j k }
     var_impl! { a b c d e f g h i j k l }
 }
+
+// VecExt
+
+trait EnvVecExt: Env + Sized {
+    fn to_vec(self) -> Vec<OsString> {
+        self.into_iter()
+            .map(|pair| {
+                let mut merged = OsString::new();
+
+                merged.push(pair.0);
+                merged.push("=");
+                merged.push(pair.1);
+
+                merged
+            })
+            .collect()
+    }
+}
+
+impl<T: Env> EnvVecExt for T {}
