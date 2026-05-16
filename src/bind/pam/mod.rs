@@ -2,19 +2,18 @@ mod converse;
 pub use converse::PamDisplay;
 
 mod types;
+use rustix::path::Arg;
 pub use types::{CredentialsOP, PamItemType};
 use types::{FlagsBuilder, flags};
 
-use anyhow::{Result, anyhow, bail};
-use pam_sys::{PamConversation, PamHandle, PamReturnCode};
+use anyhow::{Context, Result, anyhow, bail};
+use pam_sys::{PamConversation, PamHandle, PamReturnCode, raw as sys};
 
 use std::{
     ffi::{CStr, CString, c_void},
-    os::{raw::c_char, unix::ffi::OsStringExt},
+    os::raw::c_char,
     ptr,
 };
-
-use crate::frame::environment::Env;
 
 // TODO: RAII
 
@@ -33,7 +32,7 @@ pub struct PAM<'a> {
 macro_rules! pam_call {
     (let $ret:ident = $self:ident.$method:ident( $($args:tt)* )) => {
         let code = PamReturnCode::from(
-            unsafe { pam_sys::raw::$method($self.handle, $($args)* ) }
+            unsafe { sys::$method($self.handle, $($args)* ) }
         );
 
         let $ret = $self.handle_ret(code, stringify!($method));
@@ -54,7 +53,7 @@ impl PAM<'_> {
     ) -> Result<Self> {
         let handle: *mut PamHandle = ptr::null_mut();
 
-        let conversation = converse::PamConversationHandler::with_display(display).pass_to_pam();
+        let conversation = converse::PamConversationHandler::with_display(display).build();
 
         match pam_sys::start(service_name, username, &conversation, handle as _) {
             PamReturnCode::SUCCESS => Ok(Self {
@@ -132,19 +131,20 @@ impl PAM<'_> {
     }
 
     pub fn get_username(&mut self) -> Result<String> {
-        let mut p: *const c_char = ptr::null_mut();
-        pam_call!(let ret = self.pam_get_user(&mut p, ptr::null()));
-        ret.map(|_| (unsafe { CStr::from_ptr(p) }).to_str().unwrap().to_string())
+        let mut user: *const c_char = ptr::null_mut(); // TODO: is this correct?
+        let prompt: *const c_char = ptr::null();
+
+        pam_call!(let ret = self.pam_get_user(&mut user, prompt));
+        ret?;
+
+        let user = unsafe { CStr::from_ptr(user) };
+
+        user.to_str()
+            .context("Username was not valid UTF-8")
+            .map(|s| s.to_string())
     }
 
-    pub fn get_env(&mut self) -> Result<Env> {
-        // NOTE: we will need to either discard everything non-unicode
-        // or write a custom parser on a CStr
-        // or find a lossless way from CStr to OsStr and copy the one from std
-        todo!()
-    }
-
-    pub fn set_env(&mut self, env: Env) -> Result<()> {
+    pub fn set_env(&mut self, env: impl envy::diff::Diff) -> Result<()> {
         // NOTE: misc_paste_env in pam_sys::wrappped is constrained to unicode (UTF-8)
         // while our Env (and this impl) is not
 
@@ -159,11 +159,19 @@ impl PAM<'_> {
     }
 }
 
-fn env_to_c_pointers(env: Env) -> Vec<*const i8> {
+// impl EnvContainer for PAM<'_> {
+//     fn raw_get(&self, key: &str) -> Option<std::ffi::OsString> {
+//         let cstr = CStr::from(key);
+//         let ret = sys::
+//     }
+// }
+
+fn env_to_c_pointers(env: impl envy::diff::Diff) -> Vec<*const i8> {
     let env_vec: Vec<_> = env
-        .to_vec()
+        .to_env_diff()
         .into_iter()
-        .map(|env_pair| CString::new(env_pair.into_vec()).unwrap())
+        // TODO: do not unwrap
+        .map(|env_pair| env_pair.to_os_string().into_c_str().unwrap())
         .collect();
 
     env_vec

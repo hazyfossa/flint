@@ -1,31 +1,18 @@
 use anyhow::Result;
+use envy::{define_env, parse::EnvironmentParse};
 
-use crate::{
-    bind::tty::VtNumber,
-    frame::environment::{EnvironmentParse, EnvironmentVariable, define_env},
-};
+define_env!(
+    #[derive(PartialEq)]
+    pub VtNumber(u16) = "XDG_VTNR"
+);
 
-impl EnvironmentVariable for VtNumber {
-    const KEY: &str = "XDG_VTNR";
-}
-
-impl EnvironmentParse<String> for VtNumber {
-    fn env_serialize(self) -> String {
-        self.0.to_string()
-    }
-
-    fn env_deserialize(raw: String) -> Result<Self> {
-        Ok(Self(raw.parse()?))
+impl VtNumber {
+    pub fn to_tty_string(&self) -> String {
+        format!("tty{}", self.to_string())
     }
 }
 
-define_env!(pub Seat(String) = parse "XDG_SEAT");
-
-impl Seat {
-    pub fn into_id(self) -> String {
-        self.0
-    }
-}
+define_env!(pub Seat(String) = "XDG_SEAT");
 
 impl Default for Seat {
     fn default() -> Self {
@@ -42,11 +29,11 @@ pub enum SessionClass {
     LockScreen,
 }
 
-impl EnvironmentVariable for SessionClass {
-    const KEY: &str = "XDG_SESSION_CLASS";
-}
+define_env!(SessionClass = #custom "XDG_SESSION_CLASS");
 
 impl EnvironmentParse<String> for SessionClass {
+    type Error = std::convert::Infallible;
+
     fn env_serialize(self) -> String {
         match self {
             Self::User { early, light } => {
@@ -64,7 +51,7 @@ impl EnvironmentParse<String> for SessionClass {
         }
     }
 
-    fn env_deserialize(_value: String) -> Result<Self> {
+    fn env_deserialize(_value: String) -> Result<Self, Self::Error> {
         todo!()
     }
 }

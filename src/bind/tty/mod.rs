@@ -1,35 +1,13 @@
 pub mod control;
+pub use control::RenderMode as VtRenderMode;
+use control::VTAccessor;
 
 use std::os::fd::{FromRawFd, OwnedFd};
 
 use anyhow::{Context, Result};
 use rustix::fs::{Mode, OFlags};
-use shrinkwraprs::Shrinkwrap;
 
-pub use control::RenderMode as VtRenderMode;
-use control::VTAccessor;
-
-#[derive(Shrinkwrap, Clone, Copy, PartialEq)]
-pub struct VtNumber(pub u16);
-
-impl VtNumber {
-    // This function is soft-unsafe, as it is the caller responsibility
-    // to ensure "number" indicates a valid VT to handle
-    //
-    // For example, it is a really bad idea to assign this to an arbitrary value
-    // as that will allow (among other things) switching to this VT while another program is running in it
-    // While not undefined behaviour, this is undesirable.
-    //
-    // General rule of thumb: either the user or the kernel should tell you this VT number is free
-    // before you call this
-    pub fn manually_checked_from(number: u16) -> Self {
-        Self(number)
-    }
-
-    pub fn to_tty_string(&self) -> String {
-        format!("tty{}", self.to_string())
-    }
-}
+use crate::environment::VtNumber;
 
 pub struct Terminal {
     pub raw: VTAccessor,
@@ -83,7 +61,7 @@ impl Terminal {
 
         self.raw.clear().context("Failed to clear terminal")?;
 
-        let currently_active = VtNumber::manually_checked_from(
+        let currently_active = VtNumber::from(
             self.raw
                 .get_common_state()
                 .context("Failed to query active VT state")?

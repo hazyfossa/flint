@@ -11,9 +11,7 @@ use rustix::{
     ioctl, stdio,
 };
 
-// TODO: some OPs here are better defined as IntegerSetter, as they do not require a pointer
-
-use super::VtNumber;
+use crate::environment::VtNumber;
 
 pub struct VTAccessor(OwnedFd);
 
