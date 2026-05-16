@@ -5,16 +5,14 @@ mod worker;
 
 use std::path::PathBuf;
 
-use anyhow::{Context, Result};
+use anyhow::Result;
 use argh::FromArgs;
+use envy::Get;
 use rustix::process;
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    bind::{
-        pam::{CredentialsOP, PAM, PamDisplay, PamItemType},
-        tty::{Terminal, VtRenderMode},
-    },
+    bind::pam::{CredentialsOP, Pam, PamDisplay},
     environment::{Seat, VtNumber},
 };
 
@@ -34,64 +32,49 @@ pub struct Config {
 }
 
 struct View {
-    vt: VtNumber,
+    vt: Option<VtNumber>,
     seat: Option<Seat>,
 }
 
-fn start_session(
-    display: impl PamDisplay,
-    env: impl envy::diff::Diff,
+struct Session {
+    pam: Pam,
+}
 
-    // If unset, it will be queried via PAM
-    username: Option<&str>,
+impl Session {
+    fn start(
+        env: impl envy::Diff,
+        username: Option<&str>,
+        display: impl PamDisplay,
+        require_auth: bool,
+        silent: bool,
+    ) -> Result<Self> {
+        let mut pam = Pam::new("flint", display, username, silent)?;
 
-    executable: PathBuf,
+        if require_auth {
+            pam.authenticate(false)?;
+        }
+        pam.assert_account_is_valid(false)?;
+        pam.credentials(CredentialsOP::Establish)?;
 
-    require_auth: bool,
-    silent: bool,
-) -> Result<()> {
-    let mut pam = PAM::new("flint", display, username, silent)?;
+        pam.set_env(env);
+        pam.open_session()?;
 
-    if require_auth {
-        pam.authenticate(false)?;
+        Ok(Self { pam })
     }
-    pam.assert_account_is_valid(false)?;
-    pam.credentials(CredentialsOP::Establish)?;
 
-    process::setsid().context("failed to become a session leader process")?;
+    fn view(&self) -> View {
+        View {
+            vt: self.pam.get::<VtNumber>().ok(),
+            seat: self.pam.get::<Seat>().ok(),
+        }
+    }
 
-    let vt_number = match vt_number {
-        Some(value) => value,
-        None => todo!(), // TODO: vt alloc
-    };
-
-    let terminal = Terminal::new(vt_number).context("failed to provision an active VT")?;
-    terminal
-        .set_as_current()
-        .context("failed to set terminal as current")?;
-
-    pam.set_item(PamItemType::TTY, &vt_number.to_tty_string())?;
-
-    pam.open_session()?;
-
-    let pam_env = pam.get_env()?;
-    let mut context = SessionContext::from_trusted_env(executable, pam_env)
-        .context("failed to provision session context from env that PAM passed us")?;
-
-    let session_resources = ();
-
-    terminal
-        .activate(VtRenderMode::Graphics)
-        .context("failed to activate VT")?;
-
-    // TODO: wait on end of graphical-session target in systemd.
-
-    pam.close_session()?;
-    drop(session_resources);
-    pam.credentials(CredentialsOP::Delete)?;
-    pam.end()?;
-
-    Ok(())
+    fn end(mut self) {
+        // TODO: log errors
+        let _ = self.pam.close_session();
+        let _ = self.pam.credentials(CredentialsOP::Delete);
+        self.pam.end();
+    }
 }
 
 #[tokio::main(flavor = "current_thread")]
@@ -99,6 +82,7 @@ async fn main() -> Result<()> {
     let subscriber = tracing_subscriber::FmtSubscriber::new();
     tracing::subscriber::set_global_default(subscriber)?;
 
-    let mut args = Args::from_env();
+    let args: Args = argh::from_env();
+
     Ok(())
 }

@@ -7,22 +7,24 @@ pub use types::{CredentialsOP, PamItemType};
 use types::{FlagsBuilder, flags};
 
 use anyhow::{Context, Result, anyhow, bail};
-use pam_sys::{PamConversation, PamHandle, PamReturnCode, raw as sys};
+use pam_sys::{PamConversation, PamHandle as RawPamHandle, PamReturnCode, raw as sys};
 
 use std::{
-    ffi::{CStr, CString, c_void},
-    os::raw::c_char,
+    ffi::{CStr, CString, OsString, c_void},
+    os::{raw::c_char, unix::ffi::OsStringExt},
     ptr,
 };
 
 // TODO: RAII
 
-pub struct PAM<'a> {
-    handle: &'a mut PamHandle,
+pub struct Pam {
+    handle: *mut RawPamHandle,
     last_code: PamReturnCode,
 
     _conversation: PamConversation,
 
+    // NOTE: i did not find any reason for this flag to be configurable per-call
+    // however, that can trivially be done
     silent: bool,
 }
 
@@ -39,7 +41,7 @@ macro_rules! pam_call {
     };
 }
 
-impl PAM<'_> {
+impl Pam {
     pub fn new(
         service_name: &str,
         display: impl PamDisplay,
@@ -47,13 +49,11 @@ impl PAM<'_> {
         // If None, PAM will query for it via prompt() on PamDisplay
         username: Option<&str>,
 
-        // NOTE: i did not find any reason for this flag to be configurable per-call
-        // however, that can trivially be done
         silent: bool,
     ) -> Result<Self> {
-        let handle: *mut PamHandle = ptr::null_mut();
+        let handle: *mut RawPamHandle = ptr::null_mut();
 
-        let conversation = converse::PamConversationHandler::with_display(display).build();
+        let conversation = converse::PamConversationHandler::with_display(display).pass_to_pam();
 
         match pam_sys::start(service_name, username, &conversation, handle as _) {
             PamReturnCode::SUCCESS => Ok(Self {
@@ -159,12 +159,21 @@ impl PAM<'_> {
     }
 }
 
-// impl EnvContainer for PAM<'_> {
-//     fn raw_get(&self, key: &str) -> Option<std::ffi::OsString> {
-//         let cstr = CStr::from(key);
-//         let ret = sys::
-//     }
-// }
+// TODO: fallible raw containers for envy
+impl envy::container::EnvContainer for Pam {
+    fn raw_get(&self, key: &str) -> Option<std::ffi::OsString> {
+        let key = CString::new(key.as_bytes()).unwrap();
+        let ret = unsafe { sys::pam_getenv(self.handle, key.as_ptr()) };
+
+        match ret.is_null() {
+            true => None,
+            false => {
+                let ret = unsafe { CString::from_raw(ret as _) };
+                Some(OsString::from_vec(ret.as_bytes().into()))
+            }
+        }
+    }
+}
 
 fn env_to_c_pointers(env: impl envy::diff::Diff) -> Vec<*const i8> {
     let env_vec: Vec<_> = env

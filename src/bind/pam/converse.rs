@@ -127,7 +127,7 @@ impl<'a> PamConversationHandler<'a> {
         pam_ret as c_int
     }
 
-    pub fn build(mut self) -> PamConversation {
+    pub fn pass_to_pam(mut self) -> PamConversation {
         PamConversation {
             conv: Some(Self::converse),
             data_ptr: &mut self as *mut PamConversationHandler as *mut c_void,

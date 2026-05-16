@@ -2,7 +2,7 @@ use anyhow::Result;
 use envy::{define_env, parse::EnvironmentParse};
 
 define_env!(
-    #[derive(PartialEq)]
+    #[derive(Copy, PartialEq)]
     pub VtNumber(u16) = "XDG_VTNR"
 );
 
