@@ -1,7 +1,6 @@
-use libc::{c_char, c_int, c_void, calloc, free, memcpy, size_t};
+use libc::{c_char, c_int, c_void, calloc, free, size_t};
 use pam_sys::{PamConversation, PamMessage, PamMessageStyle, PamResponse, PamReturnCode};
-use std::{error::Error, ffi::CStr, mem, pin::Pin};
-use zeroize::Zeroize;
+use std::{error::Error, ffi::CStr, mem, pin::Pin, ptr};
 
 // TODO: try not to bind via libc here, if possible
 
@@ -31,15 +30,26 @@ pub trait PamDisplay {
     fn message(&self, text: &str, level: MessageLevel) -> Result<(), ConversationError>;
 }
 
-unsafe fn to_cstr(mut s: String) -> *mut c_char {
+fn zeroize_string(mut s: String) {
+    let bytes = unsafe { s.as_bytes_mut() };
+
+    for byte in bytes.iter_mut() {
+        unsafe {
+            std::ptr::write_volatile(byte, 0);
+        }
+    }
+    s.clear();
+}
+
+unsafe fn to_cstr(s: String) -> *mut c_char {
     unsafe {
-        let a = calloc(1, s.len() + 1) as *mut c_char;
-        if a.is_null() {
+        let ptr = calloc(1, s.len() + 1) as *mut c_char;
+        if ptr.is_null() {
             panic!("unable to allocate C string");
         }
-        memcpy(a as *mut c_void, s.as_ptr() as *const c_void, s.len());
-        s.zeroize();
-        return a;
+        ptr::copy_nonoverlapping(s.as_ptr(), ptr as _, s.len());
+        zeroize_string(s);
+        return ptr;
     }
 }
 
