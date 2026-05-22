@@ -319,10 +319,9 @@ dependencies = [
  "bon",
  "bytes",
  "envy",
+ "flint-pam",
  "freedesktop-session-parser",
  "fs-err",
- "libc",
- "pam-sys",
  "paste",
  "rustix",
  "serde",
@@ -333,6 +332,16 @@ dependencies = [
  "tracing-subscriber",
  "zbus",
  "zlink",
+]
+
+[[package]]
+name = "flint-pam"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "envy",
+ "libc",
+ "pam-sys",
 ]
 
 [[package]]

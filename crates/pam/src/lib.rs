@@ -1,12 +1,11 @@
 mod converse;
+use anyhow::{Context, anyhow};
 pub use converse::PamDisplay;
 
 mod types;
-use rustix::path::Arg;
 pub use types::{CredentialsOP, PamItemType};
 use types::{FlagsBuilder, flags};
 
-use anyhow::{Context, Result, anyhow, bail};
 use pam_sys::{PamConversation, PamHandle as RawPamHandle, PamReturnCode, raw as sys};
 
 use std::{
@@ -15,7 +14,8 @@ use std::{
     ptr,
 };
 
-// TODO: RAII
+pub type Error = anyhow::Error; // TODO
+type Result<T, E = Error> = std::result::Result<T, E>;
 
 pub struct Pam {
     handle: *mut RawPamHandle,
@@ -37,7 +37,7 @@ macro_rules! pam_call {
             unsafe { sys::$method($self.handle, $($args)* ) }
         );
 
-        let $ret = $self.handle_ret(code, stringify!($method));
+        let $ret = $self.handle_ret(code);
     };
 }
 
@@ -65,15 +65,15 @@ impl Pam {
                 last_code: PamReturnCode::SUCCESS,
                 silent,
             }),
-            err => bail!(err),
+            err => return Err(anyhow!(err)),
         }
     }
 
-    fn handle_ret(&mut self, ret: PamReturnCode, fn_name: &str) -> Result<()> {
+    fn handle_ret(&mut self, ret: PamReturnCode) -> Result<()> {
         self.last_code = ret;
         match self.last_code {
             PamReturnCode::SUCCESS => Ok(()),
-            err => Err(anyhow!("pam error at `{fn_name}`: {err}")),
+            err => Err(anyhow!(err)),
         }
     }
 
@@ -140,7 +140,7 @@ impl Pam {
         let user = unsafe { CStr::from_ptr(user) };
 
         user.to_str()
-            .context("Username was not valid UTF-8")
+            .context("Cannot parse username")
             .map(|s| s.to_string())
     }
 
@@ -153,7 +153,7 @@ impl Pam {
         ret
     }
 
-    // Safety: same as a manual drop, the resource should
+    // Safety: same as a manual drop, the resource should not be used afterwards
     pub unsafe fn end(&mut self) -> Result<()> {
         pam_call!(let ret = self.pam_end(self.last_code as i32));
         ret
@@ -188,8 +188,12 @@ fn env_to_c_pointers(env: impl envy::diff::Diff) -> Vec<*const i8> {
     let env_vec: Vec<_> = env
         .to_env_diff()
         .into_iter()
-        // TODO: do not unwrap
-        .map(|env_pair| env_pair.to_os_string().into_c_str().unwrap())
+        // TODO: is this correct? check rustix::path::Arg for reference
+        .map(|env_pair| {
+            CStr::from_bytes_until_nul(env_pair.to_os_string().as_encoded_bytes())
+                .unwrap()
+                .to_owned()
+        })
         .collect();
 
     env_vec

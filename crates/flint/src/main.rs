@@ -10,13 +10,11 @@ use std::{os::fd::AsFd, path::PathBuf};
 use anyhow::{Context, Result};
 use argh::FromArgs;
 use envy::Get;
+use flint_pam::{CredentialsOP, Pam, PamDisplay};
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    bind::{
-        pam::{CredentialsOP, Pam, PamDisplay},
-        tty::{Terminal, VtNumber},
-    },
+    bind::tty::{Terminal, VtNumber},
     environment::Seat,
 };
 

@@ -1,0 +1,10 @@
+[package]
+name = "flint-pam"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+envy = { git = "https://github.com/hazyfossa/envy.git", version = "0.1.0" }
+libc = "0.2.186"
+pam-sys = "0.5.6"
+anyhow = "1"
