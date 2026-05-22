@@ -1,14 +1,22 @@
+use std::num::ParseIntError;
+
 use anyhow::Result;
-use envy::{define_env, parse::EnvironmentParse};
+use envy::{EnvVariable, define_env, parse::EnvironmentParse};
 
-define_env!(
-    #[derive(Copy, PartialEq)]
-    pub VtNumber(u16) = "XDG_VTNR"
-);
+use crate::bind::tty::VtNumber;
+impl EnvVariable for VtNumber {
+    const KEY: &str = "XDG_VTNR";
+}
 
-impl VtNumber {
-    pub fn to_tty_string(&self) -> String {
-        format!("tty{}", self.to_string())
+impl EnvironmentParse<String> for VtNumber {
+    type Error = ParseIntError;
+    fn env_deserialize(raw: String) -> Result<Self, Self::Error> {
+        // TODO: use snafu instead of this hack
+        Self::new(raw.parse()?).ok_or("257".parse::<u8>().unwrap_err())
+    }
+
+    fn env_serialize(self) -> String {
+        self.to_string()
     }
 }
 

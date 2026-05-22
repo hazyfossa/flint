@@ -1,29 +1,24 @@
+#![allow(dead_code)]
+
 mod bind;
 mod environment;
 mod utils;
 mod worker;
 
-use std::path::PathBuf;
+use std::{os::fd::AsFd, path::PathBuf};
 
-use anyhow::Result;
+use anyhow::{Context, Result};
 use argh::FromArgs;
 use envy::Get;
-use rustix::process;
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    bind::pam::{CredentialsOP, Pam, PamDisplay},
-    environment::{Seat, VtNumber},
+    bind::{
+        pam::{CredentialsOP, Pam, PamDisplay},
+        tty::{Terminal, VtNumber},
+    },
+    environment::Seat,
 };
-
-#[derive(FromArgs)]
-/// flint session manager
-struct Args {
-    /// configuration path
-    #[argh(option)]
-    #[argh(default = r#""/etc/flint.toml".into()"#)]
-    config: PathBuf,
-}
 
 #[derive(Serialize, Deserialize, Default)]
 pub struct Config {
@@ -36,11 +31,11 @@ struct View {
     seat: Option<Seat>,
 }
 
-struct Session {
+struct PamSession {
     pam: Pam,
 }
 
-impl Session {
+impl PamSession {
     fn start(
         env: impl envy::Diff,
         username: Option<&str>,
@@ -56,7 +51,7 @@ impl Session {
         pam.assert_account_is_valid(false)?;
         pam.credentials(CredentialsOP::Establish)?;
 
-        pam.set_env(env);
+        pam.set_env(env)?;
         pam.open_session()?;
 
         Ok(Self { pam })
@@ -68,13 +63,36 @@ impl Session {
             seat: self.pam.get::<Seat>().ok(),
         }
     }
+}
 
-    fn end(mut self) {
-        // TODO: log errors
-        let _ = self.pam.close_session();
-        let _ = self.pam.credentials(CredentialsOP::Delete);
-        self.pam.end();
+impl Drop for PamSession {
+    fn drop(&mut self) {
+        self.pam.close_session().unwrap();
+        self.pam.credentials(CredentialsOP::Delete).unwrap();
     }
+}
+
+fn new_process_tree_session<F: AsFd>(ctty: &Terminal<F>) -> Result<()> {
+    rustix::process::setsid().context("Failed to create a new process-tree session (setsid)")?;
+
+    ctty.set_as_ctty()
+        .context("Failed to set controlling tty")?;
+
+    Ok(())
+}
+
+#[derive(FromArgs)]
+/// flint session manager
+struct Args {
+    /// configuration path
+    #[argh(option)]
+    #[argh(default = r#""/etc/flint.toml".into()"#)]
+    config: PathBuf,
+
+    /// TODO
+    #[argh(option)]
+    #[argh(default = "false")]
+    can_suspend_home: bool,
 }
 
 #[tokio::main(flavor = "current_thread")]

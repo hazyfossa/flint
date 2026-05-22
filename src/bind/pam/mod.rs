@@ -153,9 +153,18 @@ impl Pam {
         ret
     }
 
-    pub fn end(mut self) -> Result<()> {
+    // Safety: same as a manual drop, the resource should
+    pub unsafe fn end(&mut self) -> Result<()> {
         pam_call!(let ret = self.pam_end(self.last_code as i32));
         ret
+    }
+}
+
+impl Drop for Pam {
+    fn drop(&mut self) {
+        unsafe {
+            sys::pam_end(self.handle, self.last_code as _);
+        }
     }
 }
 
