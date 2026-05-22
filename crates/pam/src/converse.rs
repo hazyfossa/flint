@@ -2,7 +2,15 @@ use libc::{c_char, c_int, c_void, calloc, free, size_t};
 use pam_sys::{PamConversation, PamMessage, PamMessageStyle, PamResponse, PamReturnCode};
 use std::{error::Error, ffi::CStr, mem, pin::Pin, ptr};
 
-// TODO: try not to bind via libc here, if possible
+pub enum MessageLevel {
+    Error,
+    Info,
+}
+
+pub trait PamDisplay {
+    fn prompt(&self, text: &str, show: bool) -> Result<String, ConversationError>;
+    fn message(&self, text: &str, level: MessageLevel) -> Result<(), ConversationError>;
+}
 
 pub struct ConversationError;
 
@@ -18,16 +26,6 @@ impl Into<PamReturnCode> for ConversationError {
     fn into(self) -> PamReturnCode {
         PamReturnCode::CONV_ERR
     }
-}
-
-pub enum MessageLevel {
-    Error,
-    Info,
-}
-
-pub trait PamDisplay {
-    fn prompt(&self, text: &str, show: bool) -> Result<String, ConversationError>;
-    fn message(&self, text: &str, level: MessageLevel) -> Result<(), ConversationError>;
 }
 
 fn zeroize_string(mut s: String) {
@@ -58,12 +56,6 @@ pub struct PamConversationHandler<'a> {
 }
 
 impl<'a> PamConversationHandler<'a> {
-    pub fn with_display(display: impl PamDisplay + 'a) -> Self {
-        Self {
-            display: Box::pin(display),
-        }
-    }
-
     fn handle(
         &self,
         message: &PamMessage,
@@ -142,5 +134,19 @@ impl<'a> PamConversationHandler<'a> {
             conv: Some(Self::converse),
             data_ptr: &mut self as *mut PamConversationHandler as *mut c_void,
         }
+    }
+}
+
+pub fn new(display: impl PamDisplay) -> PamConversation {
+    PamConversationHandler {
+        display: Box::pin(display),
+    }
+    .pass_to_pam()
+}
+
+pub fn none() -> PamConversation {
+    PamConversation {
+        conv: None,
+        data_ptr: ptr::null_mut::<c_void>(),
     }
 }

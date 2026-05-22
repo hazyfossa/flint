@@ -3,6 +3,7 @@ use anyhow::{Context, anyhow};
 pub use converse::PamDisplay;
 
 mod types;
+
 pub use types::{CredentialsOP, PamItemType};
 use types::{FlagsBuilder, flags};
 
@@ -13,6 +14,13 @@ use std::{
     os::{raw::c_char, unix::ffi::OsStringExt},
     ptr,
 };
+
+// NOTE: this is a hack so the main crate does not depend on libc.
+// In the future we expect to have a separate "userdb" crate.
+pub use libc::passwd;
+pub unsafe fn getpwnam(name: *const c_char) -> *mut passwd {
+    unsafe { libc::getpwnam(name) }
+}
 
 pub type Error = anyhow::Error; // TODO
 type Result<T, E = Error> = std::result::Result<T, E>;
@@ -44,16 +52,17 @@ macro_rules! pam_call {
 impl Pam {
     pub fn new(
         service_name: &str,
-        display: impl PamDisplay,
+        display: Option<impl PamDisplay>,
 
         // If None, PAM will query for it via prompt() on PamDisplay
         username: Option<&str>,
-
-        silent: bool,
     ) -> Result<Self> {
         let handle: *mut RawPamHandle = ptr::null_mut();
 
-        let conversation = converse::PamConversationHandler::with_display(display).pass_to_pam();
+        let silent = display.is_none();
+        let conversation = display
+            .map(|v| converse::new(v))
+            .unwrap_or(converse::none());
 
         match pam_sys::start(service_name, username, &conversation, handle as _) {
             PamReturnCode::SUCCESS => Ok(Self {
@@ -162,6 +171,7 @@ impl Pam {
 
 impl Drop for Pam {
     fn drop(&mut self) {
+        // Safety: `manual drop` in `drop`
         unsafe {
             sys::pam_end(self.handle, self.last_code as _);
         }

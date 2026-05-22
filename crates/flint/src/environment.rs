@@ -3,7 +3,7 @@ use std::num::ParseIntError;
 use anyhow::Result;
 use envy::{EnvVariable, define_env, parse::EnvironmentParse};
 
-use crate::bind::tty::VtNumber;
+use crate::tty::VtNumber;
 impl EnvVariable for VtNumber {
     const KEY: &str = "XDG_VTNR";
 }

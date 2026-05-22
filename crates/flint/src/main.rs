@@ -1,9 +1,10 @@
 #![allow(dead_code)]
 
-mod bind;
 mod environment;
+mod plymouth;
+mod systemd;
+mod tty;
 mod utils;
-mod worker;
 
 use std::{os::fd::AsFd, path::PathBuf};
 
@@ -14,8 +15,8 @@ use flint_pam::{CredentialsOP, Pam, PamDisplay};
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    bind::tty::{Terminal, VtNumber},
     environment::Seat,
+    tty::{Terminal, VtNumber},
 };
 
 #[derive(Serialize, Deserialize, Default)]
@@ -37,11 +38,10 @@ impl PamSession {
     fn start(
         env: impl envy::Diff,
         username: Option<&str>,
-        display: impl PamDisplay,
+        display: Option<impl PamDisplay>,
         require_auth: bool,
-        silent: bool,
     ) -> Result<Self> {
-        let mut pam = Pam::new("flint", display, username, silent)?;
+        let mut pam = Pam::new("flint", display, username)?;
 
         if require_auth {
             pam.authenticate(false)?;
