@@ -53,7 +53,7 @@ fn getpwnam(username: &str) -> io::Result<Option<passwd>> {
 pub struct NSS;
 impl UserProvider for NSS {
     type Error = io::Error;
-    async fn resolve(name: &str) -> Result<Option<UserMeta>, Self::Error> {
+    async fn resolve(&mut self, name: &str) -> Result<Option<UserMeta>, Self::Error> {
         Ok(getpwnam(name)?.map(|p| UserMeta {
             uid: p.pw_uid,
             gid: p.pw_gid,

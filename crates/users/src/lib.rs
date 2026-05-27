@@ -1,6 +1,9 @@
 #[cfg(feature = "nss")]
 pub mod nss;
 
+#[cfg(feature = "userdb")]
+pub mod userdb;
+
 use std::ffi::c_uint;
 
 pub type Uid = c_uint;
@@ -11,10 +14,11 @@ pub type Gid = c_uint;
 pub struct UserMeta {
     pub uid: Uid,
     pub gid: Gid,
+    // TODO: support `locked` (sp_expire)?
 }
 
 #[allow(async_fn_in_trait)]
 pub trait UserProvider {
     type Error: std::error::Error;
-    async fn resolve(name: &str) -> Result<Option<UserMeta>, Self::Error>;
+    async fn resolve(&mut self, name: &str) -> Result<Option<UserMeta>, Self::Error>;
 }
