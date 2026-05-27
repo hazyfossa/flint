@@ -239,9 +239,6 @@ impl Default for Mode {
 
 // Activate
 
-type IoSetActivateVT = ioctl::Setter<0x560F, SwitchVtTarget>;
-type IoWaitVT = ioctl::Setter<0x5607, u16>;
-
 struct SwitchVtTarget {
     number: u64,
     mode: Mode,
@@ -254,6 +251,9 @@ impl<F: AsFd> VT<F> {
             number: self.number as _,
             mode: Mode::default(),
         };
+
+        type IoSetActivateVT = ioctl::Setter<0x560F, SwitchVtTarget>;
+        type IoWaitVT = ioctl::Setter<0x5607, u16>;
 
         unsafe {
             ioctl::ioctl(&self.fd, IoSetActivateVT::new(target))?;

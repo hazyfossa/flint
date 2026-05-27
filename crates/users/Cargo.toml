@@ -1,0 +1,10 @@
+[package]
+name = "flint-users"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+libc = { version = "0.2.186", optional = true }
+
+[features]
+nss = ["dep:libc"]

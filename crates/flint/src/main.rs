@@ -95,10 +95,12 @@ struct Args {
 
 #[tokio::main(flavor = "current_thread")]
 async fn main() -> Result<()> {
-    let subscriber = tracing_subscriber::FmtSubscriber::new();
-    tracing::subscriber::set_global_default(subscriber)?;
-
+    tracing_subscriber::fmt().init();
     let args: Args = argh::from_env();
+
+    let terminal = Terminal::current_io()
+        .map(|v| v.try_as_vt())
+        .context("Flint can only be started from a VT context");
 
     Ok(())
 }
