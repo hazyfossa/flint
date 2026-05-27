@@ -2,12 +2,14 @@ use libc::passwd;
 
 use super::*;
 use std::{
-    ffi::CStr,
+    ffi::{CStr, OsStr, c_char},
     io::{self, ErrorKind},
-    mem, ptr,
+    mem,
+    os::unix::ffi::OsStrExt,
+    ptr,
 };
 
-fn getpwnam(username: &str) -> io::Result<Option<passwd>> {
+unsafe fn getpwnam(username: &str) -> io::Result<Option<passwd>> {
     let arg = CStr::from_bytes_until_nul(username.as_bytes())
         .map_err(|e| io::Error::new(ErrorKind::InvalidInput, e))?;
 
@@ -50,13 +52,25 @@ fn getpwnam(username: &str) -> io::Result<Option<passwd>> {
     })
 }
 
+unsafe fn raw_read<'a, T>(p: *const c_char) -> T
+where
+    T: From<&'a OsStr>,
+{
+    let cstr = unsafe { CStr::from_ptr(p).to_bytes() };
+    T::from(OsStr::from_bytes(cstr))
+}
+
 pub struct NSS;
 impl UserProvider for NSS {
     type Error = io::Error;
     async fn resolve(&mut self, name: &str) -> Result<Option<UserMeta>, Self::Error> {
-        Ok(getpwnam(name)?.map(|p| UserMeta {
-            uid: p.pw_uid,
-            gid: p.pw_gid,
-        }))
+        unsafe {
+            Ok(getpwnam(name)?.map(|p| UserMeta {
+                uid: p.pw_uid,
+                gid: p.pw_gid,
+                home: raw_read(p.pw_dir),
+                shell: raw_read(p.pw_shell),
+            }))
+        }
     }
 }

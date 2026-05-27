@@ -27,8 +27,6 @@ struct UserRecord {
     shell: String,
     #[serde(rename = "homeDirectory")]
     home: String,
-    #[serde(rename = "memberOf")]
-    groups: Vec<String>,
     // TODO: support status: fallback
 }
 
@@ -101,9 +99,12 @@ impl UserProvider for UserDB {
             Err(e) => return Err(e.into()),
         };
 
+        let p = record;
         Ok(Some(UserMeta {
-            uid: record.uid,
-            gid: record.gid,
+            uid: p.uid,
+            gid: p.gid,
+            home: p.home.into(),
+            shell: p.shell.into(),
         }))
     }
 }

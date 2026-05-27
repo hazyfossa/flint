@@ -4,7 +4,10 @@ pub mod nss;
 #[cfg(feature = "userdb")]
 pub mod userdb;
 
-use std::ffi::c_uint;
+use std::{
+    ffi::{OsString, c_uint},
+    path::PathBuf,
+};
 
 pub type Uid = c_uint;
 pub type Gid = c_uint;
@@ -14,6 +17,8 @@ pub type Gid = c_uint;
 pub struct UserMeta {
     pub uid: Uid,
     pub gid: Gid,
+    pub home: PathBuf,
+    pub shell: OsString,
     // TODO: support `locked` (sp_expire)?
 }
 
