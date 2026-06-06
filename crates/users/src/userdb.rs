@@ -33,7 +33,8 @@ struct UserRecord {
 #[derive(Debug, Deserialize)]
 struct GetUserRecordOutput {
     record: UserRecord,
-    incomplete: Option<bool>,
+    // TODO: log this as a warning?
+    // incomplete: Option<bool>,
 }
 
 #[derive(Debug, Clone, PartialEq, ReplyError, Error)]
@@ -95,6 +96,7 @@ impl UserProvider for UserDB {
 
         let record = match ret {
             Ok(v) => v.record,
+            // TODO: there are other errors that semantically are close to "not found"
             Err(UserDatabaseError::NoRecordFound) => return Ok(None),
             Err(e) => return Err(e.into()),
         };

@@ -247,8 +247,10 @@ struct SwitchVtTarget {
 impl<F: AsFd> VT<F> {
     pub(super) fn activate(&self) -> io::Result<()> {
         let target = SwitchVtTarget {
-            // TODO: Shouldn't the kernel already know this by fd?
             number: self.number as _,
+
+            // we currently do not plan to support
+            // process-controlled (exclusive) switching
             mode: Mode::default(),
         };
 

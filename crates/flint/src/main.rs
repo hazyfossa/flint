@@ -5,6 +5,7 @@ mod plymouth;
 mod systemd;
 mod tty;
 mod utils;
+mod xdg_session;
 
 use std::{os::fd::AsFd, path::PathBuf};
 
@@ -70,7 +71,7 @@ impl Drop for PamSession {
     }
 }
 
-fn new_process_tree_session<F: AsFd>(ctty: &Terminal<F>) -> Result<()> {
+fn new_shell_session<F: AsFd>(ctty: &Terminal<F>) -> Result<()> {
     rustix::process::setsid().context("Failed to create a new process-tree session (setsid)")?;
 
     ctty.set_as_ctty()

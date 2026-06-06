@@ -344,7 +344,6 @@ dependencies = [
  "bytes",
  "envy",
  "flint-pam",
- "freedesktop-session-parser",
  "fs-err",
  "paste",
  "rustix",
@@ -384,16 +383,6 @@ name = "foldhash"
 version = "0.1.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d9c4f5dac5e15c24eb999c26181a6ca40b39fe946cbe4c263c7209467bc83af2"
-
-[[package]]
-name = "freedesktop-session-parser"
-version = "0.1.0"
-source = "git+https://github.com/hazyfossa/freedesktop-session-parser#03cb042e0863dc0c0ce802f34f696d9769946d16"
-dependencies = [
- "envy",
- "paste",
- "snafu",
-]
 
 [[package]]
 name = "fs-err"
