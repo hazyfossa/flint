@@ -63,23 +63,6 @@ pub mod config {
 
 pub mod macros {
     #[macro_export]
-    macro_rules! trait_alias {
-        ($vis:vis trait $name:ident = $($for:tt)*) => {
-            $vis trait $name: $($for)* {}
-            impl<T: $($for)*> $name for T {}
-        };
-    }
-
-    // See https://github.com/rust-lang/rust/issues/35853#issuecomment-415993963
-    #[macro_export]
-    macro_rules! scope {
-    ($($body:tt)*) => {
-        macro_rules! __with_dollar_sign { $($body)* }
-        __with_dollar_sign!($);
-        }
-    }
-
-    #[macro_export]
     macro_rules! with_builder {
     (
         $vis:vis struct $name:ident {
@@ -172,6 +155,35 @@ pub mod macros {
     };
 
     (@field_string $field:ident $value:literal) => { $value };
-    (@field_string $field:ident) => { paste::paste! { stringify!([<$field:lower>]) } };
+    (@field_string $field:ident) => { stringify!([<$field:lower>]) };
 }
+}
+
+pub mod warn {
+    use std::fmt::Debug;
+
+    pub trait WarnExt<T> {
+        fn warn(self) -> Option<T>;
+    }
+
+    impl<T, E: Debug> WarnExt<T> for std::result::Result<T, E> {
+        fn warn(self) -> Option<T> {
+            match self {
+                Ok(value) => Some(value),
+                Err(e) => {
+                    tracing::warn!("{e:?}");
+                    None
+                }
+            }
+        }
+    }
+}
+
+pub mod collections {
+    use tokio::sync::mpsc::Receiver;
+
+    pub struct ReactiveList<T> {
+        inner: Vec<T>,
+        rx: Receiver<T>,
+    }
 }

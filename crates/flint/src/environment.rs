@@ -20,15 +20,6 @@ impl EnvironmentParse<String> for VtNumber {
     }
 }
 
-define_env!(pub Seat(String) = "XDG_SEAT");
-
-impl Default for Seat {
-    fn default() -> Self {
-        // man sd-login says that seat0 always exists
-        Self("seat0".into())
-    }
-}
-
 // UserIncomplete, Manager, Background and None are not here as those aren't relevant
 #[allow(dead_code)]
 pub enum SessionClass {

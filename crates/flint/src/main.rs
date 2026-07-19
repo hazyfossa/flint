@@ -2,6 +2,7 @@
 
 mod environment;
 mod plymouth;
+mod seat;
 mod systemd;
 mod tty;
 mod utils;
@@ -11,13 +12,17 @@ use std::{os::fd::AsFd, path::PathBuf};
 
 use anyhow::{Context, Result};
 use argh::FromArgs;
-use envy::Get;
+
 use flint_pam::{CredentialsOP, Pam, PamDisplay};
+use hazymacros::newtype;
+use log::warn;
 use serde::{Deserialize, Serialize};
+use tokio::sync::broadcast;
 
 use crate::{
-    environment::Seat,
+    seat::SeatID,
     tty::{Terminal, VtNumber},
+    utils::warn::WarnExt,
 };
 
 #[derive(Serialize, Deserialize, Default)]
@@ -26,9 +31,46 @@ pub struct Config {
     version: Option<String>,
 }
 
-struct View {
-    vt: Option<VtNumber>,
-    seat: Option<Seat>,
+newtype!(SessionID = u64);
+
+enum View {
+    Vt(VtNumber),
+    Seat(SeatID),
+}
+
+impl View {
+    fn seat(&self) -> Option<SeatID> {
+        match self {
+            Self::Seat(x) => Some(x.clone()),
+            _ => None,
+        }
+    }
+
+    fn from_env(env: &impl envy::Get) -> Option<Self> {
+        let seat = env
+            .maybe_get::<SeatID>()
+            .context("Proceeding without seat")
+            .warn()
+            .flatten();
+
+        let seat = seat.filter(|x| !x.is_seat0());
+
+        let vt = env
+            .maybe_get::<VtNumber>()
+            .context("invalid vt")
+            .warn()
+            .flatten();
+
+        if let Some(x) = seat {
+            if vt.is_some() {
+                warn!("Both non-zero seat and vt specified, ignoring vt");
+            }
+
+            Some(Self::Seat(x))
+        } else {
+            vt.map(Self::Vt)
+        }
+    }
 }
 
 struct PamSession {
@@ -56,11 +98,10 @@ impl PamSession {
         Ok(Self { pam })
     }
 
-    fn view(&self) -> View {
-        View {
-            vt: self.pam.get::<VtNumber>().ok(),
-            seat: self.pam.get::<Seat>().ok(),
-        }
+    fn view(&self) -> Result<View> {
+        // TODO: this should never be necessary under new model
+        View::from_env(&self.pam)
+            .context("Could not get seat/vt from PAM env. Check if systemd_pam is in the stack.")
     }
 }
 
@@ -71,6 +112,7 @@ impl Drop for PamSession {
     }
 }
 
+// TODO: does pam do this for us?
 fn new_shell_session<F: AsFd>(ctty: &Terminal<F>) -> Result<()> {
     rustix::process::setsid().context("Failed to create a new process-tree session (setsid)")?;
 
@@ -78,6 +120,12 @@ fn new_shell_session<F: AsFd>(ctty: &Terminal<F>) -> Result<()> {
         .context("Failed to set controlling tty")?;
 
     Ok(())
+}
+
+// Session handle is a session placed on a seat
+struct SessionHandle {
+    id: SessionID,
+    shutdown: broadcast::Receiver<()>,
 }
 
 #[derive(FromArgs)]
@@ -89,8 +137,7 @@ struct Args {
     config: PathBuf,
 
     /// TODO
-    #[argh(option)]
-    #[argh(default = "false")]
+    #[argh(switch)]
     can_suspend_home: bool,
 }
 
@@ -98,10 +145,6 @@ struct Args {
 async fn main() -> Result<()> {
     tracing_subscriber::fmt().init();
     let args: Args = argh::from_env();
-
-    let terminal = Terminal::current_io()
-        .map(|v| v.try_as_vt())
-        .context("Flint can only be started from a VT context");
 
     Ok(())
 }

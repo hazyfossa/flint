@@ -12,6 +12,7 @@ use crate::with_builder;
 const X11_SESSION_PATH: &str = "/usr/share/xsessions";
 const WAYLAND_SESSION_PATH: &str = "/usr/share/wayland-sessions";
 
+// TODO
 // pub struct LocaleString {
 //     default: String,
 //     lc_lookup: HashMap<String, String>,

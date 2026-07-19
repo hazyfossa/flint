@@ -25,6 +25,15 @@ tracing = "0.1.41"
 tracing-subscriber = "0.3.20"
 serde = "1.0.228"
 bon = "3.8.1"
-envy = { git = "https://github.com/hazyfossa/envy.git", version = "0.1.0" }
 argh = "0.1.19"
+log = "0.4.33"
+
+envy = { workspace = true }
 flint-pam = { version = "0.1.0", path = "../pam" }
+flint-users = { version = "0.1.0", path = "../users" }
+hazymacros = { version = "0.1.0", path = "../../../../hazymacros" }
+dyn-utils = "0.1.1"
+
+[features]
+logind = []
+seatd = []
