@@ -1,11 +1,12 @@
-use libc::passwd;
+pub use libc::passwd;
+use libc::{gid_t, uid_t};
 
-use super::*;
 use std::{
-    ffi::{CStr, OsStr, c_char},
+    ffi::{CStr, OsStr, OsString, c_char},
     io::{self, ErrorKind},
     mem,
     os::unix::ffi::OsStrExt,
+    path::PathBuf,
     ptr,
 };
 
@@ -60,17 +61,22 @@ where
     T::from(OsStr::from_bytes(cstr))
 }
 
-pub struct NSS;
-impl UserProvider for NSS {
-    type Error = io::Error;
-    async fn resolve(&mut self, name: &str) -> Result<Option<UserMeta>, Self::Error> {
-        unsafe {
-            Ok(getpwnam(name)?.map(|p| UserMeta {
-                uid: p.pw_uid,
-                gid: p.pw_gid,
-                home: raw_read(p.pw_dir),
-                shell: raw_read(p.pw_shell),
-            }))
-        }
+// TODO: properly read all of passwd here
+
+pub struct UserDefinition {
+    pub uid: uid_t,
+    pub gid: gid_t,
+    pub home: PathBuf,
+    pub shell: OsString,
+}
+
+pub fn resolve(name: &str) -> io::Result<Option<UserDefinition>> {
+    unsafe {
+        Ok(getpwnam(name)?.map(|p| UserDefinition {
+            uid: p.pw_uid,
+            gid: p.pw_gid,
+            home: raw_read(p.pw_dir),
+            shell: raw_read(p.pw_shell),
+        }))
     }
 }

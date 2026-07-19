@@ -1,9 +1,9 @@
 use std::fmt::Display;
 
 use super::*;
+use anyhow::{Result, bail};
 use serde::Deserialize;
-use thiserror::Error;
-use zlink::{ReplyError, proxy};
+use zlink::{ReplyError, proxy, tokio::unix::Stream};
 
 #[proxy("io.systemd.UserDatabase")]
 trait VarlinkDefinition {
@@ -37,7 +37,7 @@ struct GetUserRecordOutput {
     // incomplete: Option<bool>,
 }
 
-#[derive(Debug, Clone, PartialEq, ReplyError, Error)]
+#[derive(Debug, Clone, PartialEq, ReplyError)]
 #[zlink(interface = "io.systemd.UserDatabase")]
 pub enum UserDatabaseError {
     NoRecordFound,
@@ -63,7 +63,7 @@ impl Display for UserDatabaseError {
 
 pub struct UserDB {
     service: &'static str,
-    conn: zlink::unix::Connection,
+    conn: zlink::Connection<Stream>,
 }
 
 impl UserDB {
@@ -73,22 +73,13 @@ impl UserDB {
 
     pub async fn connect_service(service: &'static str) -> Result<Self, zlink::Error> {
         // TODO: runtime dir may not be /run
-        let conn = zlink::unix::connect(format!("/run/systemd/userdb/{service}")).await?;
+        let conn = zlink::tokio::unix::connect(format!("/run/systemd/userdb/{service}")).await?;
         Ok(Self { service, conn })
     }
 }
 
-#[derive(Debug, Error)]
-pub enum Error {
-    #[error("connection error: {0}")]
-    ConnectionError(#[from] zlink::Error),
-    #[error(transparent)]
-    UserDbError(#[from] UserDatabaseError),
-}
-
 impl UserProvider for UserDB {
-    type Error = Error;
-    async fn resolve(&mut self, name: &str) -> Result<Option<UserMeta>, Self::Error> {
+    async fn resolve(&mut self, name: &str) -> Result<Option<UserMeta>> {
         let ret = self
             .conn
             .get_user_record(None, Some(name), None, None, None, None, self.service)
@@ -98,7 +89,7 @@ impl UserProvider for UserDB {
             Ok(v) => v.record,
             // TODO: there are other errors that semantically are close to "not found"
             Err(UserDatabaseError::NoRecordFound) => return Ok(None),
-            Err(e) => return Err(e.into()),
+            Err(e) => bail!(e),
         };
 
         let p = record;

@@ -3,8 +3,8 @@
 mod environment;
 mod plymouth;
 mod seat;
-mod systemd;
 mod tty;
+mod user;
 mod utils;
 mod xdg_session;
 

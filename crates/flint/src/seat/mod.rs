@@ -1,6 +1,17 @@
+#[cfg(feature = "logind")]
+mod logind;
+
+#[cfg(feature = "seatd")]
+mod seatd;
+
+#[cfg(not(any(feature = "seatd", feature = "logind")))]
+fn misconfiguration() {
+    compile_error!("Select either 'logind' or 'seatd' (or both) as a supported backend")
+}
+
 use super::SessionID;
 use anyhow::Result;
-use dyn_utils::{DynObject, dyn_trait};
+use dyn_utils::dyn_trait;
 use envy::define_env;
 use tokio::sync::broadcast;
 
