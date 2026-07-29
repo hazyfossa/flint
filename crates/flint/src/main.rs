@@ -1,14 +1,14 @@
 #![allow(dead_code)]
 
-mod environment;
+mod greet;
 mod plymouth;
 mod seat;
+mod session;
 mod tty;
 mod user;
 mod utils;
-mod xdg_session;
 
-use std::{os::fd::AsFd, path::PathBuf};
+use std::{collections::HashMap, os::fd::AsFd, path::PathBuf};
 
 use anyhow::{Context, Result};
 use argh::FromArgs;
@@ -20,7 +20,7 @@ use serde::{Deserialize, Serialize};
 use tokio::sync::broadcast;
 
 use crate::{
-    seat::SeatID,
+    seat::{SeatEvent, SeatID, SeatManagerObject},
     tty::{Terminal, VtNumber},
     utils::warn::WarnExt,
 };
@@ -122,10 +122,62 @@ fn new_shell_session<F: AsFd>(ctty: &Terminal<F>) -> Result<()> {
     Ok(())
 }
 
+// broadcast is wrong here, session-triggered shutdown will propagate to seat,
+// seat to global. Need hierarchical channels.
+type ShutdownRx = broadcast::Receiver<()>;
+type ShutdownTx = broadcast::Sender<()>;
+
+struct SeatHandle {
+    id: SeatID,
+    shutdown: ShutdownRx,
+}
+
 // Session handle is a session placed on a seat
 struct SessionHandle {
     id: SessionID,
-    shutdown: broadcast::Receiver<()>,
+    view: View,
+    shutdown: ShutdownRx,
+}
+
+struct Flint {
+    seat_manager: SeatManagerObject,
+    seats: HashMap<SeatID, ShutdownRx>,
+}
+
+impl Flint {
+    async fn new() -> Result<Self> {
+        let seat_manager = seat::seat_manager()
+            .await
+            .context("Failed to connect to seat manager")?;
+
+        Ok(Self {
+            seat_manager,
+            seats: HashMap::new(),
+        })
+    }
+
+    // fn get_seat(&mut self, id: SeatID) -> Result<SeatHandle> {
+    //     match self.seats.entry(id.clone()) {
+    //         hash_map::Entry::Occupied(x) => Ok(SeatHandle(x)),
+    //         hash_map::Entry::Vacant(_) => bail!("seat {} not found or not managed by flint", *id),
+    //     }
+    // }
+
+    fn new_seat(&mut self, id: SeatID) {}
+
+    async fn run(mut self) {
+        for id in self.seat_manager.list_seats().await {
+            self.new_seat(id);
+        }
+
+        while let Some((id, event)) = self.seat_manager.next_event().await {
+            match event {
+                SeatEvent::Added => self.new_seat(id),
+                SeatEvent::Changed => todo!(),
+                SeatEvent::Removed => todo!(),
+            }
+        }
+    }
 }
 
 #[derive(FromArgs)]

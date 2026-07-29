@@ -13,9 +13,13 @@ use super::SessionID;
 use anyhow::Result;
 use dyn_utils::dyn_trait;
 use envy::define_env;
-use tokio::sync::broadcast;
 
-define_env!(pub SeatID(String) = "XDG_SEAT");
+define_env!(pub LibseatBackend(String) = "LIBSEAT_BACKEND");
+
+define_env!(
+    #[derive(PartialEq, Eq, Hash)]
+    pub SeatID(String) = "XDG_SEAT"
+);
 
 impl SeatID {
     pub fn seat0() -> Self {
@@ -33,9 +37,10 @@ impl Default for SeatID {
     }
 }
 
-enum SeatEvent {
-    Add,
-    Remove,
+pub enum SeatEvent {
+    Added,
+    Changed,
+    Removed,
 }
 
 // NOTE: DBus support would require trait redesign
@@ -43,17 +48,16 @@ enum SeatEvent {
 // the varlink/seatd implementations will then have to use polyfills
 
 #[dyn_trait]
-trait SeatManager {
+pub trait SeatManager {
+    fn libseat_backend() -> &'static LibseatBackend;
+
+    async fn list_seats(&mut self) -> Vec<SeatID>;
     async fn next_event(&mut self) -> Option<(SeatID, SeatEvent)>;
     async fn swtich(&mut self, seat: SeatID, session: SessionID);
 }
 
-fn seat_manager() -> Result<Box<dyn DynSeatManager>> {
+pub type SeatManagerObject = Box<dyn DynSeatManager>;
+pub async fn seat_manager() -> Result<SeatManagerObject> {
     // #[cfg(feature = "seatd")]
     todo!()
-}
-
-struct SeatHandle {
-    id: SeatID,
-    shutdown: broadcast::Receiver<()>,
 }

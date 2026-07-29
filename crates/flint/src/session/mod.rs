@@ -1,24 +1,6 @@
-use std::num::ParseIntError;
+use envy::{define_env, parse::EnvironmentParse};
 
-use anyhow::Result;
-use envy::{EnvVariable, define_env, parse::EnvironmentParse};
-
-use crate::tty::VtNumber;
-impl EnvVariable for VtNumber {
-    const KEY: &str = "XDG_VTNR";
-}
-
-impl EnvironmentParse<String> for VtNumber {
-    type Error = ParseIntError;
-    fn env_deserialize(raw: String) -> Result<Self, Self::Error> {
-        // TODO: use snafu instead of this hack
-        Self::new(raw.parse()?).ok_or("257".parse::<u8>().unwrap_err())
-    }
-
-    fn env_serialize(self) -> String {
-        self.to_string()
-    }
-}
+mod xdg;
 
 // UserIncomplete, Manager, Background and None are not here as those aren't relevant
 #[allow(dead_code)]
@@ -26,6 +8,15 @@ pub enum SessionClass {
     User { early: bool, light: bool },
     Greeter,
     LockScreen,
+}
+
+impl SessionClass {
+    fn user_default() -> Self {
+        Self::User {
+            early: false,
+            light: false,
+        }
+    }
 }
 
 define_env!(SessionClass = #custom "XDG_SESSION_CLASS");

@@ -143,7 +143,7 @@ impl<R: Read> Parser<R> {
             match self.read_next() {
                 Ok(ParserState::Continue) => (),
                 Ok(ParserState::EOF) => break,
-                Err(e) => return Err(e),
+                Err(e) => return Err(e), // TODO: report line number
             }
         }
 

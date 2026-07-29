@@ -178,12 +178,3 @@ pub mod warn {
         }
     }
 }
-
-pub mod collections {
-    use tokio::sync::mpsc::Receiver;
-
-    pub struct ReactiveList<T> {
-        inner: Vec<T>,
-        rx: Receiver<T>,
-    }
-}

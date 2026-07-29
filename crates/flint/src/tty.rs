@@ -1,9 +1,11 @@
 use std::{
+    num::ParseIntError,
     ops::Deref,
     os::fd::{AsFd, BorrowedFd, OwnedFd},
 };
 
 use anyhow::{Context, Result, bail, ensure};
+use envy::{EnvVariable, parse::EnvironmentParse};
 use rustix::{
     fs::{self, OFlags},
     io, ioctl, stdio,
@@ -95,6 +97,22 @@ impl Deref for VtNumber {
     type Target = u8;
     fn deref(&self) -> &Self::Target {
         &self.0
+    }
+}
+
+impl EnvVariable for VtNumber {
+    const KEY: &str = "XDG_VTNR";
+}
+
+impl EnvironmentParse<String> for VtNumber {
+    type Error = ParseIntError;
+    fn env_deserialize(raw: String) -> Result<Self, Self::Error> {
+        // TODO: use snafu instead of this hack
+        Self::new(raw.parse()?).ok_or("257".parse::<u8>().unwrap_err())
+    }
+
+    fn env_serialize(self) -> String {
+        self.to_string()
     }
 }
 
