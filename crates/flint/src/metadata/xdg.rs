@@ -4,7 +4,7 @@ use envy::define_env;
 use std::{
     fs::File,
     io::{BufRead, BufReader, Lines, Read},
-    path::PathBuf,
+    path::{Path, PathBuf},
 };
 
 use crate::with_builder;
@@ -19,21 +19,6 @@ const WAYLAND_SESSION_PATH: &str = "/usr/share/wayland-sessions";
 // }
 
 type LocaleString = String;
-
-// https://www.freedesktop.org/software/systemd/man/latest/pam_systemd.html#type=
-define_env!(SessionKind = "XDG_SESSION_TYPE");
-
-crate::strenum!(
-    #[derive(Debug, PartialEq, Eq)]
-    pub SessionKind {
-        Unspecified,
-        TTY,
-        X11,
-        Wayland,
-        Mir,
-        Web,
-    }
-);
 
 // TODO: where are those session-entry-types specified?
 pub enum KindHint {
@@ -155,13 +140,13 @@ pub fn parse(reader: BufReader<impl Read>) -> Result<SessionEntry> {
     Parser::new(reader).read_all()
 }
 
-pub fn get_session_entry(kind: SessionKind, name: &str) -> Result<SessionEntry> {
-    let path: PathBuf = match kind {
-        SessionKind::X11 => X11_SESSION_PATH,
-        SessionKind::Wayland => WAYLAND_SESSION_PATH,
-        other => panic!("There is no standart location for {other} session"),
-    }
-    .into();
+pub fn get_entry(path: &Path, name: &str) -> Result<SessionEntry> {
+    // let path: PathBuf = match kind {
+    //     SessionKind::X11 => X11_SESSION_PATH,
+    //     SessionKind::Wayland => WAYLAND_SESSION_PATH,
+    //     other => panic!("There is no standart location for {other} session"),
+    // }
+    // .into();
 
     let path = path.join(format!("{name}.desktop"));
 
@@ -169,4 +154,8 @@ pub fn get_session_entry(kind: SessionKind, name: &str) -> Result<SessionEntry> 
         .with_context(|| format!("Failed to read session definition file: {path:?}"))?;
 
     parse(BufReader::with_capacity(4096, file))
+}
+
+pub fn get_all_entries(path: &Path) -> Vec<SessionEntry> {
+    todo!()
 }

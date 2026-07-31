@@ -49,7 +49,7 @@ pub enum SeatEvent {
 
 #[dyn_trait]
 pub trait SeatManager {
-    fn libseat_backend() -> &'static LibseatBackend;
+    fn libseat_backend() -> &'static str;
 
     async fn list_seats(&mut self) -> Vec<SeatID>;
     async fn next_event(&mut self) -> Option<(SeatID, SeatEvent)>;

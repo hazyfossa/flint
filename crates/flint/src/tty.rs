@@ -263,7 +263,7 @@ struct SwitchVtTarget {
 }
 
 impl<F: AsFd> VT<F> {
-    pub(super) fn activate(&self) -> io::Result<()> {
+    pub fn activate(&self) -> io::Result<()> {
         let target = SwitchVtTarget {
             number: self.number as _,
 

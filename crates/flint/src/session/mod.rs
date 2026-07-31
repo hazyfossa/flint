@@ -1,6 +1,9 @@
+use anyhow::Result;
 use envy::{define_env, parse::EnvironmentParse};
+use serde::{Deserialize, Serialize};
 
-mod xdg;
+// https://www.freedesktop.org/software/systemd/man/latest/pam_systemd.html#type=
+define_env!(SessionTypeEnv(String) = "XDG_SESSION_TYPE");
 
 // UserIncomplete, Manager, Background and None are not here as those aren't relevant
 #[allow(dead_code)]
@@ -44,4 +47,16 @@ impl EnvironmentParse<String> for SessionClass {
     fn env_deserialize(_value: String) -> Result<Self, Self::Error> {
         todo!()
     }
+}
+
+pub trait SessionKind {
+    // fn xdg_lookup_path() -> &'static str {
+    //     ""
+    // }
+
+    // fn special_sessions() -> Vec<SessionMeta> {
+    //     Vec::new()
+    // }
+
+    async fn run(&self, cx: u128 /* TODO */) -> Result<impl envy::Diff>;
 }

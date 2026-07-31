@@ -1,6 +1,7 @@
 #![allow(dead_code)]
 
 mod greet;
+mod metadata;
 mod plymouth;
 mod seat;
 mod session;

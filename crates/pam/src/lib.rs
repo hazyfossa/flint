@@ -178,10 +178,9 @@ impl Drop for Pam {
     }
 }
 
-// TODO: fallible raw containers for envy
 impl envy::container::EnvContainer for Pam {
     fn raw_get(&self, key: &str) -> Option<std::ffi::OsString> {
-        let key = CString::new(key.as_bytes()).unwrap();
+        let key = CString::new(key.as_bytes()).expect("Failed to cast env key to CString");
         let ret = unsafe { sys::pam_getenv(self.handle, key.as_ptr()) };
 
         match ret.is_null() {
