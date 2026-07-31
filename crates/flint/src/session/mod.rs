@@ -1,6 +1,5 @@
 use anyhow::Result;
 use envy::{define_env, parse::EnvironmentParse};
-use serde::{Deserialize, Serialize};
 
 // https://www.freedesktop.org/software/systemd/man/latest/pam_systemd.html#type=
 define_env!(SessionTypeEnv(String) = "XDG_SESSION_TYPE");

@@ -4,8 +4,6 @@ use shrinkwraprs::Shrinkwrap;
 
 use std::ffi::{CString, c_char};
 
-use crate::utils::bufio::{Buf, BufRead};
-
 #[derive(Debug)]
 pub struct Request {
     pub method: char,

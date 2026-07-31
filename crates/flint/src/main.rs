@@ -2,12 +2,14 @@
 
 mod greet;
 mod metadata;
-mod plymouth;
 mod seat;
 mod session;
 mod tty;
 mod user;
 mod utils;
+
+// TODO: bring back (not a priority)
+// mod plymouth;
 
 use std::{collections::HashMap, os::fd::AsFd, path::PathBuf};
 
@@ -16,9 +18,9 @@ use argh::FromArgs;
 
 use flint_pam::{CredentialsOP, Pam, PamDisplay};
 use hazymacros::newtype;
-use log::warn;
 use serde::{Deserialize, Serialize};
 use tokio::sync::broadcast;
+use tracing::warn;
 
 use crate::{
     seat::{SeatEvent, SeatID, SeatManagerObject},

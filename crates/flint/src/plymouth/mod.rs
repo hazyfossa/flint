@@ -2,7 +2,6 @@
 mod proto;
 
 use anyhow::{Context, Result};
-use bytes::BytesMut;
 use tokio::{
     io::{AsyncReadExt, AsyncWriteExt},
     net::UnixStream,
@@ -59,7 +58,7 @@ impl Client {
         self.stream.write_all(&request.serialize()?).await?;
         self.stream.flush().await?;
 
-        let mut buf = BytesMut::new();
+        let mut buf = Vec::new();
         self.stream.read_buf(&mut buf).await?; // TODO
 
         T::read_buf(&mut buf)
