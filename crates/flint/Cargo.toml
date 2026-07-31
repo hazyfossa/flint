@@ -34,6 +34,7 @@ dyn-utils = "0.1.1"
 zlink = "0.7.0"
 derive-where = { version = "1.6.1", features = ["serde"] }
 pwd-grp = { version = "1.0.2", optional = true }
+uuid = { version = "1.24.0", features = ["v7", "serde"] }
 
 
 [features]

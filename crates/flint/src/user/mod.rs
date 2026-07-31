@@ -4,10 +4,7 @@ mod userdb;
 #[cfg(feature = "nss")]
 mod nss;
 
-use std::{
-    ffi::{OsString, c_uint},
-    path::PathBuf,
-};
+use std::ffi::c_uint;
 
 use anyhow::Result;
 use dyn_utils::{dyn_object, dyn_trait};
@@ -22,7 +19,6 @@ pub struct UserMeta {
     pub gid: Gid,
     pub home: String,
     pub shell: String,
-    // TODO: support `locked` (sp_expire)?
 }
 
 #[dyn_trait]
