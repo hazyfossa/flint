@@ -29,11 +29,11 @@ log = "0.4.33"
 
 envy = { workspace = true }
 flint-pam = { version = "0.1.0", path = "../pam" }
-flint-nss = { version = "0.1.0", path = "../nss", optional = true }
 hazymacros = { version = "0.1.0", path = "../../../../hazymacros" }
 dyn-utils = "0.1.1"
 zlink = "0.7.0"
 derive-where = { version = "1.6.1", features = ["serde"] }
+pwd-grp = { version = "1.0.2", optional = true }
 
 
 [features]
@@ -44,4 +44,5 @@ userdb = []
 nss = []
 
 systemd = ["logind", "userdb"]
-flint-nss = ["dep:flint-nss"]
+pwd-grp = ["dep:pwd-grp"]
+# pwd = ["dep:pwd-grp"]

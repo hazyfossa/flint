@@ -20,8 +20,8 @@ pub type Gid = c_uint;
 pub struct UserMeta {
     pub uid: Uid,
     pub gid: Gid,
-    pub home: PathBuf,
-    pub shell: OsString,
+    pub home: String,
+    pub shell: String,
     // TODO: support `locked` (sp_expire)?
 }
 
