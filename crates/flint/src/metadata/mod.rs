@@ -1,8 +1,10 @@
+mod xdg;
+
 use std::{collections::HashMap, path::PathBuf};
 
 use serde::{Deserialize, Serialize};
 
-mod xdg;
+use crate::core::Target;
 
 // An opaque session metadata identifier, also known as a handle
 // TODO: consider an atomic counter instead
@@ -32,11 +34,11 @@ pub struct Config {
     summary: Summary,
 
     // TODO: this should refer to the SessionManagerObject
-    // config as we inject it
+    // config as we inject it. "kind" is passed as tag
     #[serde(rename = "config")]
     ref_session_config: String,
 
-    executable: String,
+    target: Target,
 }
 
 pub type IntrinsicTag = &'static str;

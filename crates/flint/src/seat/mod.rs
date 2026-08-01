@@ -46,13 +46,20 @@ pub enum SeatEvent {
 // to associated type Handle which implements RawSessionHandle trait
 // the varlink/seatd implementations will then have to use polyfills
 
+pub struct SeatProperties {
+    pub view: view::View,
+    pub can_graphical: bool,
+}
+
 #[dyn_trait]
 pub trait SeatManager {
     fn libseat_backend() -> &'static str;
 
     async fn list_seats(&mut self) -> Vec<SeatID>;
     async fn next_event(&mut self) -> Option<(SeatID, SeatEvent)>;
-    async fn query(&mut self, id: SeatID) -> view::View;
+
+    // All this method does is enriches
+    async fn query(&mut self, id: &SeatID) -> Result<SeatProperties>;
     // async fn swtich(&mut self, seat: SeatID, session: SessionID);
 }
 

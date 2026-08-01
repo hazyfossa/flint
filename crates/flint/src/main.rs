@@ -11,16 +11,25 @@ mod utils;
 // TODO: bring back (not a priority)
 // mod plymouth;
 
-use std::{collections::HashMap, path::PathBuf};
+use std::{
+    collections::HashMap,
+    io::{BufReader, ErrorKind},
+    path::PathBuf,
+    sync::OnceLock,
+};
 
 use anyhow::{Context, Result};
 use argh::FromArgs;
 
+use fs_err::File;
 use hazymacros::newtype;
 use serde::{Deserialize, Serialize};
 use tokio::sync::broadcast;
 
-use crate::seat::{SeatEvent, SeatID, SeatManagerObject};
+use crate::{
+    seat::{SeatEvent, SeatID, SeatManagerObject, view::View},
+    utils::warn::WarnExt,
+};
 
 #[derive(Serialize, Deserialize, Default)]
 pub struct Config {
@@ -37,21 +46,10 @@ type ShutdownTx = broadcast::Sender<()>;
 
 struct Flint {
     seat_manager: SeatManagerObject,
-    seats: HashMap<SeatID, ShutdownRx>,
+    seats: HashMap<SeatID, View>,
 }
 
 impl Flint {
-    async fn new() -> Result<Self> {
-        let seat_manager = seat::seat_manager()
-            .await
-            .context("Failed to connect to seat manager")?;
-
-        Ok(Self {
-            seat_manager,
-            seats: HashMap::new(),
-        })
-    }
-
     // fn get_seat(&mut self, id: SeatID) -> Result<SeatHandle> {
     //     match self.seats.entry(id.clone()) {
     //         hash_map::Entry::Occupied(x) => Ok(SeatHandle(x)),
@@ -59,17 +57,30 @@ impl Flint {
     //     }
     // }
 
-    fn new_seat(&mut self, id: SeatID) {}
+    async fn new_seat(&mut self, id: SeatID) {
+        let props = self
+            .seat_manager
+            .query(&id)
+            .await
+            .context("Failed to get properties, skipping seat")
+            .warn();
+
+        if let Some(props) = props {
+            self.seats.insert(id, props.view);
+            // TODO: spawn greeter here
+        }
+    }
 
     async fn run(mut self) {
+        // TODO: parallelize
         for id in self.seat_manager.list_seats().await {
-            self.new_seat(id);
+            self.new_seat(id).await;
         }
 
         while let Some((id, event)) = self.seat_manager.next_event().await {
             match event {
-                SeatEvent::Added => self.new_seat(id),
-                SeatEvent::Changed => todo!(),
+                SeatEvent::Added => self.new_seat(id).await,
+                SeatEvent::Changed => todo!(), // TODO: here, view can change if vt
                 SeatEvent::Removed => todo!(),
             }
         }
@@ -89,10 +100,26 @@ struct Args {
     can_suspend_home: bool,
 }
 
+static CONFIG: OnceLock<Config> = OnceLock::new();
+
+pub fn config_from_file(path: PathBuf) -> Result<Config> {
+    let file = match File::open(&path) {
+        Err(e) if matches!(e.kind(), ErrorKind::NotFound) => return Ok(Config::default()),
+        other => other,
+    }?;
+
+    let buf = BufReader::new(file);
+
+    Ok(serde_json::from_reader(buf)?)
+}
+
 #[tokio::main(flavor = "current_thread")]
 async fn main() -> Result<()> {
     tracing_subscriber::fmt().init();
     let args: Args = argh::from_env();
+
+    let config = config_from_file(args.config).context("Failed to load config")?;
+    let _ = CONFIG.set(config);
 
     Ok(())
 }

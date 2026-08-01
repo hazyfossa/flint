@@ -1,29 +1,6 @@
 pub mod tty;
 // pub mod plymouth;
 
-pub mod config {
-    use std::{
-        io::{ErrorKind, Read},
-        path::PathBuf,
-    };
-
-    use anyhow::Result;
-    use fs_err::File;
-    use serde::de::DeserializeOwned;
-
-    pub fn config_from_file<T: DeserializeOwned + Default>(path: PathBuf) -> Result<T> {
-        let mut file = match File::open(&path) {
-            Err(e) if matches!(e.kind(), ErrorKind::NotFound) => return Ok(T::default()),
-            other => other,
-        }?;
-
-        let mut buf = Vec::new();
-        file.read_to_end(&mut buf)?;
-
-        Ok(serde_json::from_slice(&buf)?)
-    }
-}
-
 pub mod macros {
     #[macro_export]
     macro_rules! with_builder {

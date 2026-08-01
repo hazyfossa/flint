@@ -1,5 +1,5 @@
 mod converse;
-use anyhow::{Context, anyhow};
+use anyhow::{Context, anyhow, bail};
 pub use converse::PamDisplay;
 
 mod types;
@@ -82,7 +82,7 @@ impl Pam {
         self.last_code = ret;
         match self.last_code {
             PamReturnCode::SUCCESS => Ok(()),
-            err => Err(anyhow!(err)),
+            err => bail!(err),
         }
     }
 
