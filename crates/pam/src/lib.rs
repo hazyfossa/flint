@@ -161,20 +161,11 @@ impl Pam {
         pam_call!(let ret = self.pam_misc_paste_env(env.as_ptr()));
         ret
     }
-
-    // Safety: same as a manual drop, the resource should not be used afterwards
-    pub unsafe fn end(&mut self) -> Result<()> {
-        pam_call!(let ret = self.pam_end(self.last_code as i32));
-        ret
-    }
 }
 
 impl Drop for Pam {
     fn drop(&mut self) {
-        // Safety: `manual drop` in `drop`
-        unsafe {
-            sys::pam_end(self.handle, self.last_code as _);
-        }
+        pam_call!(let _ignore_ret = self.pam_end(self.last_code as i32));
     }
 }
 

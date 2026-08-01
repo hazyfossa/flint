@@ -4,10 +4,9 @@ use serde::{Deserialize, Serialize};
 
 mod xdg;
 
-// An opaque session metadata identifier
-// also known as a handle
+// An opaque session metadata identifier, also known as a handle
 // TODO: consider an atomic counter instead
-pub type ID = uuid::Uuid;
+pub type MetadataID = uuid::Uuid;
 
 // TODO: ponder if this can be per-user (probably a bad idea)
 // why specifically a bad idea:
@@ -78,7 +77,7 @@ impl Metadata {
 }
 
 pub struct DefinedSessions {
-    store: HashMap<ID, Metadata>,
+    store: HashMap<MetadataID, Metadata>,
 }
 
 #[derive(Serialize)]
@@ -89,7 +88,7 @@ pub struct ForGreeter<'a> {
 }
 
 impl DefinedSessions {
-    fn for_greeter(&self) -> HashMap<&ID, ForGreeter<'_>> {
+    fn for_greeter(&self) -> HashMap<&MetadataID, ForGreeter<'_>> {
         self.store
             .iter()
             .map(|(k, v)| (k, v.for_greeter()))

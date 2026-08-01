@@ -1,3 +1,6 @@
+pub mod tty;
+// pub mod plymouth;
+
 pub mod config {
     use std::{
         io::{ErrorKind, Read},

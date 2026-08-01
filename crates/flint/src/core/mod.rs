@@ -1,8 +1,15 @@
-use anyhow::Result;
+mod pam;
+
+use std::os::fd::AsFd;
+
+use anyhow::{Context, Result};
 use envy::{define_env, parse::EnvironmentParse};
 
-// https://www.freedesktop.org/software/systemd/man/latest/pam_systemd.html#type=
-define_env!(SessionTypeEnv(String) = "XDG_SESSION_TYPE");
+use crate::utils::tty::Terminal;
+
+// TODO: we are mixing two username flows at the moment.
+// f1: we ask for username -> we resolve -> we pass to pam -> pam asks for pass
+// f2: pam asks for username + pass -> pam resolves -> we ask pam -> we double-resolve??
 
 // UserIncomplete, Manager, Background and None are not here as those aren't relevant
 #[allow(dead_code)]
@@ -48,14 +55,12 @@ impl EnvironmentParse<String> for SessionClass {
     }
 }
 
-pub trait SessionKind {
-    // fn xdg_lookup_path() -> &'static str {
-    //     ""
-    // }
+// TODO: does pam do this for us?
+fn new_shell_session<F: AsFd>(ctty: &Terminal<F>) -> Result<()> {
+    rustix::process::setsid().context("Failed to create a new process-tree session (setsid)")?;
 
-    // fn special_sessions() -> Vec<SessionMeta> {
-    //     Vec::new()
-    // }
+    ctty.set_as_ctty()
+        .context("Failed to set controlling tty")?;
 
-    async fn run(&self, cx: u128 /* TODO */) -> Result<impl envy::Diff>;
+    Ok(())
 }
