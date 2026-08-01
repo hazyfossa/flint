@@ -31,6 +31,7 @@ zlink = "0.7.0"
 pwd-grp = { version = "1.0.2", optional = true }
 uuid = { version = "1.24.0", features = ["v7", "serde"] }
 serde_json = "1.0.151"
+static-reload = { git = "https://github.com/hazyfossa/static-reload", version = "0.1.0" }
 
 
 [features]

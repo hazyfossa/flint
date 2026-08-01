@@ -24,6 +24,7 @@ use argh::FromArgs;
 use fs_err::File;
 use hazymacros::newtype;
 use serde::{Deserialize, Serialize};
+use static_reload::{Resource, ResourceCell};
 use tokio::sync::broadcast;
 
 use crate::{
@@ -35,6 +36,24 @@ use crate::{
 pub struct Config {
     #[allow(dead_code)]
     version: Option<String>,
+}
+
+pub static CONFIG: ResourceCell<Config> = ResourceCell::new();
+
+impl Resource for Config {
+    type Definition = PathBuf;
+    type Error = anyhow::Error;
+
+    async fn load(definition: &Self::Definition) -> Result<Self> {
+        let file = match File::open(definition) {
+            Err(e) if matches!(e.kind(), ErrorKind::NotFound) => return Ok(Config::default()),
+            other => other,
+        }?;
+
+        let buf = BufReader::new(file);
+
+        Ok(serde_json::from_reader(buf)?)
+    }
 }
 
 newtype!(SessionID = u64);
@@ -100,26 +119,11 @@ struct Args {
     can_suspend_home: bool,
 }
 
-static CONFIG: OnceLock<Config> = OnceLock::new();
-
-pub fn config_from_file(path: PathBuf) -> Result<Config> {
-    let file = match File::open(&path) {
-        Err(e) if matches!(e.kind(), ErrorKind::NotFound) => return Ok(Config::default()),
-        other => other,
-    }?;
-
-    let buf = BufReader::new(file);
-
-    Ok(serde_json::from_reader(buf)?)
-}
-
 #[tokio::main(flavor = "current_thread")]
 async fn main() -> Result<()> {
     tracing_subscriber::fmt().init();
     let args: Args = argh::from_env();
-
-    let config = config_from_file(args.config).context("Failed to load config")?;
-    let _ = CONFIG.set(config);
+    CONFIG.init(args.config).await?;
 
     Ok(())
 }
