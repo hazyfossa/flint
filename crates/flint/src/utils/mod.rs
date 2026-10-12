@@ -24,7 +24,7 @@ pub mod macros {
         $vis:vis struct $name:ident {
             $($fvis:vis $key:ident : $(#$kind:meta)? $value:path,)*
         }
-    ) => { paste::paste! {
+    ) => { pastey::paste! {
         $vis struct $name {
             $($fvis $key : $crate::with_builder!(@repr $($kind)? $value),)*
         }

@@ -91,6 +91,7 @@ impl Terminal<BorrowedFd<'static>> {
     }
 }
 
+#[derive(Clone, Copy)]
 pub struct VtNumber(u8);
 
 impl Deref for VtNumber {
@@ -171,7 +172,7 @@ macro_rules! vt_property {
         $(, set = $opcode_set:expr)?
 
     ) => {
-        paste::paste! {
+        pastey::paste! {
         impl<F: AsFd> VT<F> {
             pub fn [<get_ $model:snake>](&self) -> io::Result<$model> {
                 unsafe { ioctl::ioctl(&self.fd, ioctl::Getter::<$opcode_get, $model>::new()) }

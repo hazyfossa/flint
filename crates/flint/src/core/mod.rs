@@ -2,8 +2,8 @@ mod pam;
 
 use std::{os::fd::AsFd, path::PathBuf};
 
-use eyre::{Context, Result};
 use envy::{define_env, parse::EnvironmentParse};
+use eyre::{Context, Result};
 use serde::{Deserialize, Serialize};
 
 use crate::{CONFIG, utils::tty::Terminal};
@@ -44,7 +44,7 @@ impl Target {
             Self::Unit { .. } => Runtime::Systemd,
             Self::Command { runtime, .. } => runtime
                 .clone()
-                .unwrap_or(CONFIG.read().default_runtime.clone()),
+                .unwrap_or(CONFIG.require().default_runtime.clone()),
         }
     }
 
@@ -54,8 +54,8 @@ impl Target {
 
     fn pulls_env_from_systemd(&self) -> bool {
         // all others either
-        // 1. already inherit the systemd env
-        // 2. do not need it
+        // - already inherit the systemd env
+        // - do not need it
         matches!(self.runtime(), Runtime::Hybrid)
     }
 }
@@ -80,15 +80,6 @@ pub enum SessionClass {
     User { early: bool, light: bool },
     Greeter,
     LockScreen,
-}
-
-impl SessionClass {
-    fn user_default() -> Self {
-        Self::User {
-            early: false,
-            light: false,
-        }
-    }
 }
 
 define_env!(SessionClass = #custom "XDG_SESSION_CLASS");
