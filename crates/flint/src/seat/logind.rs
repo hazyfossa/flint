@@ -1,3 +1,5 @@
+use eyre::{Context, bail, eyre};
+use futures_util::{FutureExt, Stream, StreamExt, TryStreamExt};
 use plug::{Init, plug};
 
 use super::*;
@@ -16,22 +18,37 @@ impl Init for SeatManager {
     }
 }
 
+fn handle_seat_message(seat: varlink_proto::ListSeatsOutput) -> (SeatID, SeatProperties) {
+    let id = SeatID(seat.context.id);
+
+    let props = SeatProperties {
+        can_graphical: seat.runtime.can_graphical,
+        has_active_session: seat.runtime.active_session.is_some(),
+    };
+
+    (id, props)
+}
+
 #[plug]
 impl super::SeatManager::Interface for SeatManager {
-    async fn list_seats(&mut self) -> Vec<SeatID> {
-        todo!()
-    }
+    async fn stream_seats(
+        &mut self,
+    ) -> Result<impl Stream<Item = Result<(SeatID, SeatProperties)>>> {
+        let stream = self.conn.list_seats(None).await?;
 
-    async fn next_event(&mut self) -> Option<(SeatID, SeatEvent)> {
-        todo!()
-    }
+        Ok(stream.map(|event| match event {
+            Ok(msg) => msg
+                .map(handle_seat_message)
+                .map_err(|e| eyre!("logind error: {e:?}")),
 
-    async fn query(&mut self, id: &SeatID) -> Result<SeatProperties> {
-        todo!()
+            Err(e) => Err(e).context("varlink error"),
+        }))
     }
 }
 
+use varlink_proto::Login;
 mod varlink_proto {
+    use futures_util::Stream;
     use serde::{Deserialize, Serialize};
     use zlink::{ReplyError, proxy};
 
@@ -39,11 +56,11 @@ mod varlink_proto {
     #[proxy("io.systemd.Login")]
     pub trait Login {
         /// Lists current seats. If an Id filter is provided, returns the single matching seat; otherwise streams all current seats (requires the 'more' flag).
-        /// [Supports 'more' flag]
+        #[zlink(more)]
         async fn list_seats(
             &mut self,
             #[zlink(rename = "Id")] id: Option<&str>,
-        ) -> zlink::Result<Result<ListSeatsOutput, LoginError>>;
+        ) -> zlink::Result<impl Stream<Item = zlink::Result<Result<ListSeatsOutput, LoginError>>>>;
     }
 
     /// Output parameters for the ListSeats method.

@@ -12,25 +12,19 @@ mod utils;
 // mod plymouth;
 
 use std::{
-    collections::HashMap,
     io::{BufReader, ErrorKind},
     path::PathBuf,
 };
 
 use argh::FromArgs;
-use eyre::{Context, Result};
-
+use eyre::Result;
 use fs_err::File;
 use hazymacros::newtype;
 use serde::{Deserialize, Serialize};
-use static_reload::{Resource, ResourceCell};
+use static_resource::{Resource, ResourceCell};
 use tokio::sync::broadcast;
 
-use crate::{
-    core::Runtime,
-    seat::{SeatEvent, SeatID, SeatManager, view::View},
-    utils::warn::WarnExt,
-};
+use crate::{core::Runtime, seat::SeatManager};
 
 #[derive(Serialize, Deserialize, Default)]
 pub struct Config {
