@@ -2,13 +2,13 @@ mod pam;
 
 use std::{os::fd::AsFd, path::PathBuf};
 
-use anyhow::{Context, Result};
+use eyre::{Context, Result};
 use envy::{define_env, parse::EnvironmentParse};
 use serde::{Deserialize, Serialize};
 
-use crate::utils::tty::Terminal;
+use crate::{CONFIG, utils::tty::Terminal};
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Default, Clone)]
 pub enum Runtime {
     // run like systemd does not exist
     Unix,
@@ -19,6 +19,7 @@ pub enum Runtime {
     Split,
 
     // pull environment from systemd, provide unit shims
+    #[default]
     Hybrid,
 
     // run as transient units
@@ -37,26 +38,27 @@ pub enum Target {
     },
 }
 
-// TODO: make Default of Option<> easily resolvable globally
-// ref: make Config into OnceCell
+impl Target {
+    fn runtime(&self) -> Runtime {
+        match self {
+            Self::Unit { .. } => Runtime::Systemd,
+            Self::Command { runtime, .. } => runtime
+                .clone()
+                .unwrap_or(CONFIG.read().default_runtime.clone()),
+        }
+    }
 
-// impl Target {
-//     fn activates_systemd(&self) -> bool {
-//         match self {
-//             Self::Unit { .. } => true,
-//             Self::Command { runtime, .. } => !matches!(runtime, Runtime::Unix),
-//         }
-//     }
+    fn activates_systemd(&self) -> bool {
+        !matches!(self.runtime(), Runtime::Unix)
+    }
 
-//     fn pulls_env_from_systemd(&self) -> bool {
-//         match self {
-//             // there is no need to
-//             Self::Unit { .. } => false,
-//             // all others either do not care, or already have the env
-//             Self::Command { runtime, .. } => matches!(runtime, Runtime::Hybrid),
-//         }
-//     }
-// }
+    fn pulls_env_from_systemd(&self) -> bool {
+        // all others either
+        // 1. already inherit the systemd env
+        // 2. do not need it
+        matches!(self.runtime(), Runtime::Hybrid)
+    }
+}
 
 enum Kind {
     Text,

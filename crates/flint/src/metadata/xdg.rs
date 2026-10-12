@@ -1,5 +1,5 @@
-use anyhow::{Context, Result, bail, ensure};
 use envy::define_env;
+use eyre::{Context, OptionExt, Result, bail, ensure};
 
 use std::{
     fs::File,
@@ -100,7 +100,7 @@ impl<R: Read> Parser<R> {
 
         let (k, v) = line
             .split_once("=")
-            .context("Cannot parse as a key-value pair: cannot split at =")?;
+            .ok_or_eyre("Cannot parse as a key-value pair: cannot split at =")?;
 
         let (k, v) = (k.trim_end(), v.trim_start());
 

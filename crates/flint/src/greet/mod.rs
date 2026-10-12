@@ -1,8 +1,11 @@
-use anyhow::Result;
-use dyn_utils::dyn_trait;
+use crate::metadata;
+use eyre::Result;
+use plug::plug;
 
-#[dyn_trait]
+// #[plug]
 pub trait Greeter {
-    async fn start() -> Self;
+    // This should be merged with plug Init (sessions is common config)
+    async fn start(sessions: metadata::ForGreeeter<'_>) -> Result<Box<Self>>;
+
     async fn display(&mut self, message: String) -> Result<()>;
 }

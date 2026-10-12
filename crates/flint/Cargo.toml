@@ -5,7 +5,6 @@ edition = "2024"
 
 
 [dependencies]
-anyhow = "1.0.98"
 binrw = "0.15.0"
 fs-err = "3.1.3"
 rustix = { version = "1.0.8", features = [
@@ -26,12 +25,13 @@ argh = "0.1.19"
 envy = { workspace = true }
 flint-pam = { version = "0.1.0", path = "../pam" }
 hazymacros = { version = "0.1.0", path = "../../../../hazymacros" }
-dyn-utils = "0.1.1"
 zlink = "0.7.0"
 pwd-grp = { version = "1.0.2", optional = true }
 uuid = { version = "1.24.0", features = ["v7", "serde"] }
 serde_json = "1.0.151"
 static-reload = { git = "https://github.com/hazyfossa/static-reload", version = "0.1.0" }
+plug = { version = "0.1.0", path = "../../../../plug/crates/plug" }
+eyre = "0.6.14"
 
 
 [features]

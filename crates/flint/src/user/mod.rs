@@ -6,8 +6,8 @@ mod nss;
 
 use std::ffi::c_uint;
 
-use anyhow::Result;
-use dyn_utils::{dyn_object, dyn_trait};
+use eyre::Result;
+use plug::plug;
 
 pub type Uid = c_uint;
 pub type Gid = c_uint;
@@ -21,9 +21,10 @@ pub struct UserMeta {
     pub shell: String,
 }
 
-#[dyn_trait]
-#[dyn_trait(dyn_object)]
+mod nss;
+mod userdb;
+
+#[plug(userdb::UserDB, nss::NSS)]
 pub trait UserProvider {
-    #[dyn_trait(maybe_sync)]
     async fn resolve(&mut self, name: &str) -> Result<Option<UserMeta>>;
 }

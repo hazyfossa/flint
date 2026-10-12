@@ -1,19 +1,20 @@
 // For implementation, see separate crate `flint-nss`
 
 use super::*;
-use anyhow::Result;
-use dyn_utils::sync;
+use eyre::Result;
 
+#[plug]
 pub struct NSS;
 
-impl UserProvider for NSS {
-    #[sync]
+#[plug]
+impl UserProvider::Interface for NSS {
     async fn resolve(&mut self, name: &str) -> Result<Option<UserMeta>> {
-        Ok(pwd_grp::getpwnam(name)?.map(|f| UserMeta {
-            uid: f.uid,
-            gid: f.gid,
-            home: f.dir,
-            shell: f.shell,
-        }))
+        todo!();
+        // Ok(pwd_grp::getpwnam(name)?.map(|f| UserMeta {
+        //     uid: f.uid,
+        //     gid: f.gid,
+        //     home: f.dir,
+        //     shell: f.shell,
+        // }))
     }
 }

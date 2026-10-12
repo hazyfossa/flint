@@ -1,6 +1,6 @@
 mod converse;
-use anyhow::{Context, anyhow, bail};
 pub use converse::PamDisplay;
+use eyre::{Context, eyre, bail};
 
 mod types;
 
@@ -22,7 +22,7 @@ pub unsafe fn getpwnam(name: *const c_char) -> *mut passwd {
     unsafe { libc::getpwnam(name) }
 }
 
-pub type Error = anyhow::Error; // TODO
+pub type Error = eyre::Error; // TODO
 type Result<T, E = Error> = std::result::Result<T, E>;
 
 pub struct Pam {
@@ -74,7 +74,7 @@ impl Pam {
                 last_code: PamReturnCode::SUCCESS,
                 silent,
             }),
-            err => return Err(anyhow!(err)),
+            err => return Err(eyre!(err)),
         }
     }
 

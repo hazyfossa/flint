@@ -1,6 +1,22 @@
 pub mod tty;
 // pub mod plymouth;
 
+pub mod varlink {
+    use std::path::Path;
+
+    use eyre::{Context, Result};
+
+    pub type Connection = zlink::Connection<zlink::tokio::unix::Stream>;
+
+    pub async fn connect(path: impl AsRef<Path>) -> Result<Connection> {
+        let path = path.as_ref();
+
+        zlink::tokio::unix::connect(path)
+            .await
+            .with_context(|| format!("Varlink connection faield: {path:?}"))
+    }
+}
+
 pub mod macros {
     #[macro_export]
     macro_rules! with_builder {
@@ -29,8 +45,7 @@ pub mod macros {
                 }
             )*
 
-            fn finalize(self) -> anyhow::Result<$name> {
-                use anyhow::Context;
+            fn finalize(self) -> eyre::Result<$name> {
                 Ok($name {$(
                     $key: $crate::with_builder!(@finalize $($kind)? self.$key),
                 )*})
@@ -43,8 +58,8 @@ pub mod macros {
     (@repr $value:ty) => { Option<$value> };
 
     (@finalize required $self:ident.$key:ident) => {
-        $self.$key.with_context(
-            || format!("Required key {} not found",
+        $self.$key.ok_or_else(
+            || eyre::eyre!("Required key {} not found",
             // TODO: field names instead of rust names here
             stringify!($key))
         )?

@@ -1,7 +1,7 @@
 #![allow(dead_code)]
 mod proto;
 
-use anyhow::{Context, Result};
+use eyre::{Context, Result};
 use tokio::{
     io::{AsyncReadExt, AsyncWriteExt},
     net::UnixStream,

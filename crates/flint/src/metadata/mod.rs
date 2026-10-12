@@ -69,34 +69,40 @@ pub struct Metadata {
     definition: Definition,
 }
 
+pub struct DefinedSessions {
+    store: HashMap<MetadataID, Metadata>,
+}
+
+// Greeter view
+
+#[derive(Serialize)]
+pub struct GreeterMetadataView<'a> {
+    #[serde(flatten)]
+    summary: &'a Summary,
+    source: Option<&'a Source>,
+}
+
 impl Metadata {
-    fn for_greeter(&self) -> ForGreeter<'_> {
-        ForGreeter {
+    fn greeter_view(&self) -> GreeterMetadataView<'_> {
+        GreeterMetadataView {
             summary: &self.summary,
             source: self.definition.source(),
         }
     }
 }
 
-pub struct DefinedSessions {
-    store: HashMap<MetadataID, Metadata>,
-}
-
-#[derive(Serialize)]
-pub struct ForGreeter<'a> {
-    #[serde(flatten)]
-    summary: &'a Summary,
-    source: Option<&'a Source>,
-}
+pub type ForGreeeter<'a> = HashMap<&'a MetadataID, GreeterMetadataView<'a>>;
 
 impl DefinedSessions {
-    fn for_greeter(&self) -> HashMap<&MetadataID, ForGreeter<'_>> {
+    fn for_greeter(&self) -> ForGreeeter<'_> {
         self.store
             .iter()
-            .map(|(k, v)| (k, v.for_greeter()))
+            .map(|(k, v)| (k, v.greeter_view()))
             .collect()
     }
 }
+
+//
 
 pub async fn load(config: super::Config) -> DefinedSessions {
     todo!()

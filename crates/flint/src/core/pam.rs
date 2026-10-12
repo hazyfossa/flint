@@ -1,4 +1,4 @@
-use anyhow::{Context, Result};
+use eyre::{OptionExt, Result};
 use flint_pam::*;
 
 use crate::seat::view::View;
@@ -35,7 +35,7 @@ impl PamSession {
     fn view(&self) -> Result<View> {
         // TODO: this should never be necessary under new model
         View::from_env(&self.pam)
-            .context("Could not get seat/vt from PAM env. Check if systemd_pam is in the stack.")
+            .ok_or_eyre("Could not get seat/vt from PAM env. Check if systemd_pam is in the stack.")
     }
 }
 

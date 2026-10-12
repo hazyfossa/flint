@@ -1,4 +1,4 @@
-use anyhow::{Context, Result, bail};
+use eyre::{Context, Result, bail};
 use binrw::binrw;
 use shrinkwraprs::Shrinkwrap;
 

@@ -1,4 +1,37 @@
-mod varlink {
+use plug::{Init, plug};
+
+use super::*;
+use crate::utils::varlink;
+
+#[plug]
+pub struct SeatManager {
+    state: !,
+    conn: varlink::Connection,
+}
+
+impl Init for SeatManager {
+    async fn init(_: &Self::Config) -> Result<Self> {
+        let conn = varlink::connect("/run/systemd/io.systemd.Login").await?;
+        Ok(Self { conn })
+    }
+}
+
+#[plug]
+impl super::SeatManager::Interface for SeatManager {
+    async fn list_seats(&mut self) -> Vec<SeatID> {
+        todo!()
+    }
+
+    async fn next_event(&mut self) -> Option<(SeatID, SeatEvent)> {
+        todo!()
+    }
+
+    async fn query(&mut self, id: &SeatID) -> Result<SeatProperties> {
+        todo!()
+    }
+}
+
+mod varlink_proto {
     use serde::{Deserialize, Serialize};
     use zlink::{ReplyError, proxy};
 

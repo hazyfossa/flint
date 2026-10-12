@@ -4,8 +4,8 @@ use std::{
     os::fd::{AsFd, BorrowedFd, OwnedFd},
 };
 
-use anyhow::{Context, Result, bail, ensure};
 use envy::{EnvVariable, parse::EnvironmentParse};
+use eyre::{Context, Result, bail, ensure};
 use rustix::{
     fs::{self, OFlags},
     io, ioctl, stdio,

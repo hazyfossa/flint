@@ -15,11 +15,10 @@ use std::{
     collections::HashMap,
     io::{BufReader, ErrorKind},
     path::PathBuf,
-    sync::OnceLock,
 };
 
-use anyhow::{Context, Result};
 use argh::FromArgs;
+use eyre::{Context, Result};
 
 use fs_err::File;
 use hazymacros::newtype;
@@ -28,7 +27,8 @@ use static_reload::{Resource, ResourceCell};
 use tokio::sync::broadcast;
 
 use crate::{
-    seat::{SeatEvent, SeatID, SeatManagerObject, view::View},
+    core::Runtime,
+    seat::{SeatEvent, SeatID, SeatManager, view::View},
     utils::warn::WarnExt,
 };
 
@@ -36,13 +36,14 @@ use crate::{
 pub struct Config {
     #[allow(dead_code)]
     version: Option<String>,
+    default_runtime: Runtime,
 }
 
 pub static CONFIG: ResourceCell<Config> = ResourceCell::new();
 
 impl Resource for Config {
     type Definition = PathBuf;
-    type Error = anyhow::Error;
+    type Error = eyre::Error;
 
     async fn load(definition: &Self::Definition) -> Result<Self> {
         let file = match File::open(definition) {
@@ -64,47 +65,10 @@ type ShutdownRx = broadcast::Receiver<()>;
 type ShutdownTx = broadcast::Sender<()>;
 
 struct Flint {
-    seat_manager: SeatManagerObject,
-    seats: HashMap<SeatID, View>,
+    seat_manager: SeatManager::Object,
 }
 
-impl Flint {
-    // fn get_seat(&mut self, id: SeatID) -> Result<SeatHandle> {
-    //     match self.seats.entry(id.clone()) {
-    //         hash_map::Entry::Occupied(x) => Ok(SeatHandle(x)),
-    //         hash_map::Entry::Vacant(_) => bail!("seat {} not found or not managed by flint", *id),
-    //     }
-    // }
-
-    async fn new_seat(&mut self, id: SeatID) {
-        let props = self
-            .seat_manager
-            .query(&id)
-            .await
-            .context("Failed to get properties, skipping seat")
-            .warn();
-
-        if let Some(props) = props {
-            self.seats.insert(id, props.view);
-            // TODO: spawn greeter here
-        }
-    }
-
-    async fn run(mut self) {
-        // TODO: parallelize
-        for id in self.seat_manager.list_seats().await {
-            self.new_seat(id).await;
-        }
-
-        while let Some((id, event)) = self.seat_manager.next_event().await {
-            match event {
-                SeatEvent::Added => self.new_seat(id).await,
-                SeatEvent::Changed => todo!(), // TODO: here, view can change if vt
-                SeatEvent::Removed => todo!(),
-            }
-        }
-    }
-}
+impl Flint {}
 
 #[derive(FromArgs)]
 /// flint session manager

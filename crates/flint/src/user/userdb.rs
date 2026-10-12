@@ -1,7 +1,10 @@
 use std::fmt::Display;
 
+use crate::utils::varlink;
+
 use super::*;
-use anyhow::{Result, bail};
+use eyre::{Result, bail};
+use plug::Init;
 use serde::Deserialize;
 use zlink::{ReplyError, proxy, tokio::unix::Stream};
 
@@ -61,24 +64,29 @@ impl Display for UserDatabaseError {
     }
 }
 
+#[plug]
 pub struct UserDB {
+    state: !,
     service: &'static str,
-    conn: zlink::Connection<Stream>,
+    conn: varlink::Connection,
 }
 
 impl UserDB {
-    pub async fn connect() -> Result<Self, zlink::Error> {
-        Self::connect_service("io.systemd.Multiplexer").await
-    }
-
-    pub async fn connect_service(service: &'static str) -> Result<Self, zlink::Error> {
+    pub async fn connect_service(service: &'static str) -> Result<Self> {
         // TODO: runtime dir may not be /run
-        let conn = zlink::tokio::unix::connect(format!("/run/systemd/userdb/{service}")).await?;
+        let conn = varlink::connect(format!("/run/systemd/userdb/{service}")).await?;
         Ok(Self { service, conn })
     }
 }
 
-impl UserProvider for UserDB {
+impl Init for UserDB {
+    fn init(_: &Self::Config) -> impl Future<Output = Result<Self>> {
+        Self::connect_service("io.systemd.Multiplexer")
+    }
+}
+
+#[plug]
+impl UserProvider::Interface for UserDB {
     async fn resolve(&mut self, name: &str) -> Result<Option<UserMeta>> {
         let ret = self
             .conn
